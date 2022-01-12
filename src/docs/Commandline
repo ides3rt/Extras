@@ -4,4 +4,3 @@ pactl set-sink-volume @DEFAULT_SINK@ -5%
 
 # Terminal rickroll
 curl -s -L https://raw.githubusercontent.com/keroserene/rickrollrc/master/roll.sh | bash
-
