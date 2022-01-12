@@ -1,0 +1,13 @@
+# Change Capslock to Control using xmodmap(1)
+xmodmap -e 'clear Lock' \
+	-e 'keycode 0x42 = Control_L' \
+	-e 'add Control = Control_L'
+
+# Change Capslock to Control in colemak using setxkbmap(1)
+setxkbmap us -variant colemak \
+	-option ctrl:nocaps \
+	-option shift:both_capslock
+
+# Change Capslock to Backspace
+setxkbmap -option caps:backspace
+xmodmap -e "clear Lock" # Apparently, you need this for keys repeat to work

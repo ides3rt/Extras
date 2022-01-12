@@ -1,0 +1,14 @@
+# Mode values
+1 = exec
+2 = write
+4 = read
+
+# Mask values
+rwx = Mask number 0 (default dir perms for owner)
+rw- = Mask number 1 (default file perms for groups/others)
+r-x = Mask number 2 (default dir perms for groups/others)
+r-- = Mask number 3 (default file perms for groups/others)
+-wx = Mask number 4
+-w- = Mask number 5
+--x = Mask number 6
+--- = Mask number 7 (no access)

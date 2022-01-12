@@ -1,0 +1,37 @@
+# QT themes manager
+qt5ct # << For QT5
+qt6ct # << For QT6
+
+# System wide GTK theme
+ln -s "$HOME"/.gtkrc-2.0 /etc/gtk-2.0/gtkrc
+ln -s "$HOME"/.config/gtk-3.0/settings.ini /etc/gtk-3.0/settings.ini
+
+# GTK2/3 themes manager
+lxappearance
+
+# GTK2 fixes
+pacman -S gtk-engine-murrine gnome-themes-standard
+
+# Emoji
+https://fontawesome.com/v5/cheatsheet
+
+# Good fonts
+ttf-roboto
+ttf-roboto-mono
+noto-fonts
+ttf-awesome-font
+terminus-font
+ttf-monofur
+ttf-mononoki
+
+# Cool gtk themes
+Orchis GTK Theme
+Yaru colors
+WhiteSur
+Ultimate Dark
+Vimix Theme
+Prof Gnome Theme
+Arc Theme
+
+# Other GTK themes
+https://itsfoss.com/best-gtk-themes/

@@ -1,0 +1,19 @@
+# How to setup ufw
+https://linuxconfig.org/how-to-install-ufw-and-use-it-to-set-up-a-basic-firewall
+https://linuxconfig.org/how-to-install-and-use-ufw-firewall-on-linux
+
+# Nice templates for '/etc/hosts'
+https://github.com/oneoffdallas/dohservers
+https://github.com/StevenBlack/hosts
+
+# uBlock-Origin urls block-lists
+https://raw.githubusercontent.com/DandelionSprout/adfilt/master/LegitimateURLShortener.txt
+
+# Tracking test
+https://coveryourtracks.eff.org/
+
+# User-agent test
+https://whatsmyua.info/
+
+# Nice article about browsers
+https://www.unixsheikh.com/articles/choose-your-browser-carefully.html

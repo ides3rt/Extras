@@ -1,0 +1,5 @@
+# Nice article about bash's prompts
+https://www.thegeekstuff.com/2008/09/bash-shell-take-control-of-ps1-ps2-ps3-ps4-and-prompt_command/
+
+# Thing to detect current shell.
+readlink /proc/$$/exe

@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+
+# How to create custom service in OpenRC
+https://github.com/OpenRC/openrc/blob/master/service-script-guide.md
+
+# Better way to enable trim (on SystemD)
+systemctl enable fstrim.timer
+
+# LS_COLORS (for Gnu)
+rs: Reset             no: Normal                  fi: File            di: Dir
+ln: SysLink           pi: Fifo                    so: Socket          bd: BlockDevice
+cd: CharDevice        mi: NonExistSysLink         or: OrphanSysLink   ex: Executable
+do: Door              su: SUID                    sg: SGID            st: StickyDir
+ow: OtherWritableDir  tw: StickyOtherWritableDir  ca: Cap             mh: MultiHardLink
+
+# Using doas(1) instend of sudo(1) in yay(1)
+yay --sudo doas --sudoflags -- --save
+
+# Alacritty themes
+https://github.com/eendroroy/alacritty-theme
+
+# How to intall Ungoogled-Chromium on Arch Linux
+https://github.com/ungoogled-software/ungoogled-chromium-archlinux
+
+# SSH in Github
+https://www.linuxfordevices.com/tutorials/linux/connect-to-github-with-ssh
+
+# Change Firefox UI
+https://www.dedoimedo.com/computers/firefox-91-disable-proton.html
+
+# Disable non focus windows border
+while bspc subscribe -c 1 node_focus; do
+    bspc config border_width 0
+    bspc config -n focused border_width 1
+done

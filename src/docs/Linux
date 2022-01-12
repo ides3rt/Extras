@@ -1,0 +1,41 @@
+# How to clear ram/swap cache
+https://www.tecmint.com/clear-ram-memory-cache-buffer-and-swap-space-on-linux/
+
+# Remove comments and blanklines
+sed -i 's/\s*#.*//g; /^$/d' <YOUR-FILE>
+
+# Change size of tmpfs
+https://www.golinuxcloud.com/change-tmpfs-partition-size-redhat-linux/
+
+# Resize ext2/3/4
+https://access.redhat.com/articles/1196333
+
+# List of PPAs
+https://www.ubuntubuzz.com/2020/08/list-of-ppas-for-ubuntu-2004-focal-fossa.html?m=1
+
+# Install Mint without bootloader
+https://averagelinuxuser.com/install-linux-mint-without-a-bootloader/
+
+# Disable root
+https://www.tecmint.com/disable-root-login-in-linux/
+
+# Get random number
+https://www.putorius.net/generate-random-number-linux.html
+
+# System groups
+https://wiki.debian.org/SystemGroups
+https://wiki.archlinux.org/title/Users_and_groups#Group_list
+
+# Print in Linux
+https://www.youtube.com/watch?v=jnmCbEWNV1w
+
+# iptables(1)
+https://medium.com/@gokhanefendi/how-to-reset-iptables-to-default-d60ca88f6e5e
+https://www.youtube.com/watch?v=eC8scXX1_1M
+
+# When done setup iptables(8)
+iptables-save > /etc/iptables/iptables.rules
+ip6tables-save > /etc/iptables/ip6tables.rules
+
+# How to encrypt drive using Luks
+https://feldspaten.org/2019/07/19/linux-encrypt-external-hdd/
