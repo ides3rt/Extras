@@ -105,6 +105,24 @@ while :; do
 	printf 'Err: %s\n' "'$Disk' unknown blk device..." 1>&2
 done
 
+while :; do
+	read -p 'Your ESP position [1]: ' ESPPosition
+	[[ ${ESPPosition:-1} =~ ^[1-9]+$ ]] || break
+	printf 'Err: %s\n' "'$ESPPosition' not a number..." 1>&2
+done
+
+while :; do
+	read -p 'Do you use BTRFS [Y/n]: ' FSSys
+	case "$FSSys" in
+		[Yy][Ee][Ss]|[Yy]|'')
+			FSSys=btrfs ;;
+		[Nn][Oo]|[Nn])
+			FSSys=ext4 ;;
+		*)
+			printf 'Err: %s\n' "'$FSSys' not a invaild answer..." 1>&2 ;;
+	esac
+done
+
 if [[ $Disk == *nvme* ]]; then
 	Modules=nvme
 else
@@ -130,7 +148,7 @@ EOF
 while read; do
 	printf '%s\n' "$REPLY"
 done <<-EOF > /etc/mkinitcpio.conf
-	MODULES=($Modules ext4)
+	MODULES=($Modules $FSSys)
 	BINARIES=()
 	FILES=()
 	HOOKS=(base)
@@ -142,42 +160,49 @@ rm -f /boot/initramfs-linux-fallback.img
 mkinitcpio -P
 
 # Boot parameter
-KParmeter="root=UUID=$System ro initrd=\\$CPU-ucode.img"
-KParmeter+=' initrd=\initramfs-linux.img quiet nosplash nowatchdog'
+KParmeter="root=UUID=$System"
+[[ $FSSys == btrfs ]] && KParmeter+=' rootflags=subvolid=256'
+KParmeter+=" ro initrd=\\$CPU-ucode.img"
+KParmeter+=' initrd=\initramfs-linux.img quiet'
 
 # Install bootloader to UEFI
-efibootmgr --disk "${Disk:-/dev/sda}" --part 1 --create \\
+efibootmgr --disk "${Disk:-/dev/sda}" --part "${ESPPosition:-1}" --create \\
 	--label 'Arch Linux' \\
 	--loader '\vmlinuz-linux' \\
 	--unicode "$KParmeter"
-unset -v System Disk Modules KParmeter CPU
+unset -v System ESPPosition FSSys Disk Modules KParmeter CPU
+
+PS3='Select your GPU (1-3): '
+select GPU in xf86-video-amdgpu xf86-video-intel nvidia; do
+	[[ -n $GPU ]] && break
+done
 
 # Install additional packages
-pacman -S --noconfirm dash nvidia linux-headers xorg-server xorg-xinit \
+pacman -S --needed dash "$GPU" linux-headers xorg-server xorg-xinit \
 	xorg-xsetroot xorg-xrandr git wget man-db htop ufw bspwm sxhkd \
 	rxvt-unicode feh maim exfatprogs picom rofi xclip ffmpeg pipewire \
-	pipewire-pulse mpv youtube-dl pigz pacman-contrib arc-solid-gtk-theme \
-	papirus-icon-theme terminus-font zip unzip p7zip pbzip2 fzf pv rsync \
-	bash-completion bc dunst libnotify rustup sccache xdotool \
-	xcape pwgen dbus-broker tmux perl-image-exiftool archiso \
-	firefox-developer-edition links opendoas
-pacman -S --asdeps --noconfirm qemu edk2-ovmf memcached
-rustup update stable; rustup self upgrade-data
+	mpv yt-dlp pigz pacman-contrib arc-solid-gtk-theme papirus-icon-theme \
+	terminus-font zip unzip p7zip pbzip2 fzf pv rsync bc \
+	dunst rustup sccache xdotool xcape pwgen dbus-broker tmux links \
+	perl-image-exiftool archiso firefox-developer-edition opendoas
+pacman -S --asdeps qemu edk2-ovmf memcached libnotify pipewire-pulse \
+	bash-completion
+unset -v GPU
+
+# Configuration1
 ufw enable
 systemctl disable dbus
 systemctl enable dbus-broker fstrim.timer avahi-daemon ufw
-systemctl --global enable dbus-broker
+systemctl --global enable dbus-broker pipewire-pulse
 ln -s doas /usr/bin/sudo
 ln -s vim /usr/bin/vi
 ln -s vim /usr/bin/nano
+ln -s yt-dlp /usr/bin/youtube-dl
 ln -sf /usr/share/fontconfig/conf.avail/10-hinting-slight.conf /etc/fonts/conf.d/
 ln -sf /usr/share/fontconfig/conf.avail/10-sub-pixel-rgb.conf /etc/fonts/conf.d/
 ln -sf /usr/share/fontconfig/conf.avail/11-lcdfilter-default.conf /etc/fonts/conf.d/
 
-# Networking
-ufw enable
-
-# Configuration
+# Configuration2
 ln -sfT dash /bin/sh
 groupadd -r doas; groupadd -r fstab
 echo 'permit nolog :doas' > /etc/doas.conf
