@@ -26,7 +26,7 @@ unset -v VendorID
 
 # Install base packages
 basestrap /mnt base base-devel dinit elogind-dinit \
-	linux linux-firmware vim "$CPU"-ucode
+	linux linux-firmware neovim "$CPU"-ucode
 
 # Generate FSTAB
 fstabgen -U /mnt > /mnt/etc/fstab
@@ -187,9 +187,11 @@ ufw enable
 dinitctl enable ufw
 
 # Configuration1
+ln -sf bin /usr/local/sbin
 ln -s doas /usr/bin/sudo
-ln -s vim /usr/bin/vi
-ln -s vim /usr/bin/nano
+ln -s nvim /usr/bin/vim
+ln -s nvim /usr/bin/vi
+ln -s nvim /usr/bin/nano
 ln -s yt-dlp /usr/bin/youtube-dl
 ln -sf /usr/share/fontconfig/conf.avail/10-hinting-slight.conf /etc/fonts/conf.d/
 ln -sf /usr/share/fontconfig/conf.avail/10-sub-pixel-rgb.conf /etc/fonts/conf.d/
