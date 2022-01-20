@@ -115,9 +115,12 @@ while :; do
 	read -p 'Do you use BTRFS [Y/n]: ' FSSys
 	case "$FSSys" in
 		[Yy][Ee][Ss]|[Yy]|'')
-			FSSys=btrfs ;;
+			pacman -S --noconfirm btrfs-progs
+			FSSys=btrfs
+			break ;;
 		[Nn][Oo]|[Nn])
-			FSSys=ext4 ;;
+			FSSys=ext4
+			break ;;
 		*)
 			printf 'Err: %s\n' "'$FSSys' not a invaild answer..." 1>&2 ;;
 	esac

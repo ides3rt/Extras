@@ -89,9 +89,12 @@ while :; do
 	read -p 'Do you use BTRFS [Y/n]: ' FSSys
 	case "$FSSys" in
 		[Yy][Ee][Ss]|[Yy]|'')
-			FSSys=btrfs ;;
+			pacman -S --noconfirm btrfs-progs
+			FSSys=btrfs
+			break ;;
 		[Nn][Oo]|[Nn])
-			FSSys=ext4 ;;
+			FSSys=ext4
+			break ;;
 		*)
 			printf 'Err: %s\n' "'$FSSys' not a invaild answer..." 1>&2 ;;
 	esac
@@ -161,7 +164,7 @@ done <<-EOF >> /etc/pacman.conf
 	$Repos
 EOF
 pacman-key --populate archlinux
-unset -v Repos
+pacman -Sy; unset -v Repos
 
 PS3='Select your GPU (1-3): '
 select GPU in xf86-video-amdgpu xf86-video-intel nvidia; do
@@ -213,10 +216,14 @@ Groups+=',video,render,lp,kvm,input,audio,wheel'
 # Create user
 while :; do
 	read -p 'Your username: ' Username
-	useradd -mG "$Groups" "$Username"
-	passwd "$Username" && break
+	useradd -mG "$Groups" "$Username" && break
 done
 unset -v Groups
+
+# Set passwd
+while :; do
+	passwd "$Username" && break
+done
 
 # Download my keymaps
 URL=https://raw.githubusercontent.com/ides3rt/colemak-dhk/master/installer.sh
