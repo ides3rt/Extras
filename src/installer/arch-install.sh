@@ -198,11 +198,6 @@ systemctl disable dbus
 systemctl enable dbus-broker fstrim.timer avahi-daemon ufw
 systemctl --global enable dbus-broker pipewire-pulse
 ln -sf bin /usr/local/sbin
-ln -s doas /usr/bin/sudo
-ln -s nvim /usr/bin/vim
-ln -s nvim /usr/bin/vi
-ln -s nvim /usr/bin/nano
-ln -s yt-dlp /usr/bin/youtube-dl
 ln -sf /usr/share/fontconfig/conf.avail/10-hinting-slight.conf /etc/fonts/conf.d/
 ln -sf /usr/share/fontconfig/conf.avail/10-sub-pixel-rgb.conf /etc/fonts/conf.d/
 ln -sf /usr/share/fontconfig/conf.avail/11-lcdfilter-default.conf /etc/fonts/conf.d/
