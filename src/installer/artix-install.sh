@@ -128,7 +128,7 @@ done <<-EOF > /etc/mkinitcpio.conf
 	MODULES=($Modules $FSSys)
 	BINARIES=()
 	FILES=()
-	HOOKS=(base)
+	HOOKS=(base modconf)
 	COMPRESSION="xz"
 	COMMPRESSION_OPTIONS=(-9 -e -T0)
 EOF
