@@ -172,16 +172,16 @@ select GPU in xf86-video-amdgpu xf86-video-intel nvidia; do
 done
 
 # Install additional packages
-pacman -S --needed dash "$GPU" linux-headers xorg-server xorg-xinit \
-	xorg-xsetroot xorg-xrandr git wget man-db htop ufw bspwm sxhkd \
-	rxvt-unicode feh maim exfatprogs picom rofi xclip ffmpeg pipewire \
-	mpv yt-dlp pigz pacman-contrib arc-solid-gtk-theme papirus-icon-theme \
-	terminus-font zip unzip p7zip pbzip2 fzf pv rsync bc ufw-dinit \
-	dunst rustup sccache xdotool xcape pwgen tmux links \
-	perl-image-exiftool archiso firefox-developer-edition opendoas \
+pacman -S --needed --noconfirm dash "$GPU" linux-headers xorg-server \
+	xorg-xinit xorg-xsetroot xorg-xrandr git wget man-db htop ufw \
+	ufw-dinit bspwm man-pages rxvt-unicode feh maim exfatprogs picom rofi \
+	pipewire mpv pigz pacman-contrib arc-solid-gtk-theme papirus-icon-theme \
+	aria2 terminus-font zip unzip p7zip pbzip2 fzf pv rsync bc yt-dlp \
+	dunst rustup sccache xdotool xcape pwgen tmux links opendoas \
+	perl-image-exiftool archiso firefox-developer-edition sxhkd xclip \
 	dhcpcd dhcpcd-dinit
-pacman -S --asdeps qemu edk2-ovmf memcached libnotify pipewire-pulse \
-	bash-completion
+pacman -S --needed --asdeps --noconfirm qemu edk2-ovmf memcached \
+	libnotify pipewire-pulse bash-completion
 unset -v GPU
 
 # Networking

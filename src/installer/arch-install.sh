@@ -181,15 +181,15 @@ select GPU in xf86-video-amdgpu xf86-video-intel nvidia; do
 done
 
 # Install additional packages
-pacman -S --needed dash "$GPU" linux-headers xorg-server xorg-xinit \
-	xorg-xsetroot xorg-xrandr git wget man-db htop ufw bspwm sxhkd \
-	rxvt-unicode feh maim exfatprogs picom rofi xclip ffmpeg pipewire \
-	mpv yt-dlp pigz pacman-contrib arc-solid-gtk-theme papirus-icon-theme \
-	terminus-font zip unzip p7zip pbzip2 fzf pv rsync bc \
+pacman -S --needed --noconfirm dash "$GPU" linux-headers xorg-server \
+	xorg-xinit xorg-xsetroot xorg-xrandr git wget man-db htop ufw \
+	bspwm man-pages rxvt-unicode feh maim exfatprogs picom rofi opendoas \
+	pipewire mpv pigz pacman-contrib arc-solid-gtk-theme papirus-icon-theme \
+	aria2 terminus-font zip unzip p7zip pbzip2 fzf pv rsync bc yt-dlp \
 	dunst rustup sccache xdotool xcape pwgen dbus-broker tmux links \
-	perl-image-exiftool archiso firefox-developer-edition opendoas
-pacman -S --asdeps qemu edk2-ovmf memcached libnotify pipewire-pulse \
-	bash-completion
+	perl-image-exiftool archiso firefox-developer-edition sxhkd xclip
+pacman -S --needed --asdeps --noconfirm qemu edk2-ovmf memcached \
+	libnotify pipewire-pulse bash-completion
 unset -v GPU
 
 # Configuration1
