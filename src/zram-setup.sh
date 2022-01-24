@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 
+
 Program="${0##*/}"
 
 Err() {
@@ -11,18 +12,16 @@ Err() {
 
 [[ -f /lib/systemd/systemd ]] || Err 1 'Required systemd...'
 
-read -p 'Enter your total amount of ram in GB: ' Amount
+read F1 Mem _ < /proc/meminfo
 
-[[ $Amount =~ ^[1-9]+$ ]] || Err 1 'Only accept number...'
-
-Amount=$(( $Amount * 2 ))
+Mem=$(( ( $Mem / 1024 / 1024 + 1 ) * 2 ))
 
 echo 'zram' > /etc/modules-load.d/zram.conf
 
 echo 'options zram num_devices=1' > /etc/modprobe.d/zram.conf
 
 Udev="KERNEL==\"zram0\", ATTR{comp_algorithm}=\"zstd\""
-Udev+=", ATTR{disksize}=\"${Amount}G\""
+Udev+=", ATTR{disksize}=\"${Mem}G\""
 Udev+=", RUN=\"/sbin/mkswap /dev/zram0\", TAG+=\"systemd\""
 
 echo "$Udev" > /etc/udev/rules.d/99-zram.rules
@@ -32,7 +31,6 @@ echo '/dev/zram0 none swap pri=32767 0 0' >> /etc/fstab
 while read; do
 	printf '%s\n' "$REPLY"
 done <<-EOF > /etc/sysctl.d/99-zram.conf
-	# Zram devices
 	vm.swappiness = 200
 	vm.vfs_cache_pressure = 200
 	vm.page-cluster = 0
