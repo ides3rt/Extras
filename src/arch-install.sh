@@ -1,71 +1,75 @@
 #!/usr/bin/env bash
 
-# Load my keymaps
-URL=https://raw.githubusercontent.com/ides3rt/colemak-dhk/master/src/colemak-dhk.map
-curl -O "$URL"; gzip "${URL##*/}"
-loadkeys "${URL##*/}".gz
-unset -v URL
-
-# Partition, format, and mount the drive
-PS3='Select your disk: '
-select Disk in $(lsblk -dno PATH); do
-	[[ -z $Disk ]] && continue
-
-	parted "$Disk" mklabel gpt
-	sgdisk "$Disk" -n=1:0:+512M -t=1:ef00
-	sgdisk "$Disk" -n=2:0:0
-
-	[[ $Disk == *nvme* ]] && P=p
-	mkfs.fat -F 32 -n EFI "$Disk$P"1
-	mkfs.btrfs -f -L Arch "$Disk$P"2
-
-	mount "$Disk$P"2 /mnt
-	for Subvol in @ @home @opt @root @srv @local \
-		@cache @log @spool @tmp
-	do
-		btrfs su cr "$Subvol"
-	done; unset -v Subvol
-	umount /mnt
-
-	mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,autodefrag,subvol=@ "$Disk$P"2 /mnt
-	mkdir -p /mnt/{home,opt,root,srv,usr/local}
-	mkdir -p /mnt/var/{cache,log,spool,tmp}
-	mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,autodefrag,subvol=@home "$Disk$P"2 /mnt/home
-	mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,autodefrag,subvol=@opt "$Disk$P"2 /mnt/opt
-	mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,autodefrag,subvol=@root "$Disk$P"2 /mnt/root
-	mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,autodefrag,subvol=@srv "$Disk$P"2 /mnt/srv
-	mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,autodefrag,subvol=@local "$Disk$P"2 /mnt/usr/local
-	mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,autodefrag,subvol=@cache "$Disk$P"2 /mnt/var/cache
-	mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,autodefrag,subvol=@log "$Disk$P"2 /mnt/var/log
-	mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,autodefrag,subvol=@spool "$Disk$P"2 /mnt/var/spool
-	mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,autodefrag,subvol=@tmp "$Disk$P"2 /mnt/var/tmp
-
-	mkdir /mnt/boot
-	mount -o nosuid,nodev,noexec,noatime,fmask=0177,dmask=0077 "$Disk$P"2 /mnt/boot
-
-done
-export Disk
-
 # Detect CPU
 while read VendorID; do
 	[[ "$VendorID" == *vendor_id* ]] && break
 done < /proc/cpuinfo
 case "$VendorID" in
 	*AMD*)
-		export CPU=amd ;;
+		CPU=amd ;;
 	*Intel*)
-		export CPU=intel ;;
+		CPU=intel ;;
 esac
 unset -v VendorID
 
-# Install base packages
-pacstrap /mnt base base-devel linux linux-firmware neovim "$CPU"-ucode
+Preinstall() {
+	# Load my keymaps
+	URL=https://raw.githubusercontent.com/ides3rt/colemak-dhk/master/src/colemak-dhk.map
+	curl -O "$URL"; gzip "${URL##*/}"
+	loadkeys "${URL##*/}".gz
+	unset -v URL
 
-# Generate FSTAB
-genfstab -U /mnt > /mnt/etc/fstab
-echo 'tmpfs /tmp tmpfs nosuid,nodev,noatime,size=6G 0 0' >> /mnt/etc/fstab
-echo 'tmpfs /dev/shm tmpfs nosuid,nodev,noexec,noatime,size=1G 0 0' >> /mnt/etc/fstab
-echo 'proc /proc proc nosuid,nodev,noexec,gid=proc,hidepid=2 0 0' >> /mnt/etc/fstab
+	# Partition, format, and mount the drive
+	PS3='Select your disk: '
+	select Disk in $(lsblk -dno PATH); do
+		[[ -z $Disk ]] && continue
+
+		parted "$Disk" mklabel gpt
+		sgdisk "$Disk" -n=1:0:+512M -t=1:ef00
+		sgdisk "$Disk" -n=2:0:0
+
+		[[ $Disk == *nvme* ]] && P=p
+		mkfs.fat -F 32 -n EFI "$Disk$P"1
+		mkfs.btrfs -f -L Arch "$Disk$P"2
+
+		mount "$Disk$P"2 /mnt
+		for Subvol in @ @home @opt @root @srv @local \
+			@cache @log @spool @tmp
+		do
+			btrfs su cr "$Subvol"
+		done; unset -v Subvol
+		umount /mnt
+
+		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,autodefrag,subvol=@ "$Disk$P"2 /mnt
+		mkdir -p /mnt/{home,opt,root,srv,usr/local}
+		mkdir -p /mnt/var/{cache,log,spool,tmp}
+		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,autodefrag,subvol=@home "$Disk$P"2 /mnt/home
+		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,autodefrag,subvol=@opt "$Disk$P"2 /mnt/opt
+		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,autodefrag,subvol=@root "$Disk$P"2 /mnt/root
+		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,autodefrag,subvol=@srv "$Disk$P"2 /mnt/srv
+		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,autodefrag,subvol=@local "$Disk$P"2 /mnt/usr/local
+		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,autodefrag,subvol=@cache "$Disk$P"2 /mnt/var/cache
+		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,autodefrag,subvol=@log "$Disk$P"2 /mnt/var/log
+		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,autodefrag,subvol=@spool "$Disk$P"2 /mnt/var/spool
+		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,autodefrag,subvol=@tmp "$Disk$P"2 /mnt/var/tmp
+
+		mkdir /mnt/boot
+		mount -o nosuid,nodev,noexec,noatime,fmask=0177,dmask=0077 "$Disk$P"2 /mnt/boot
+
+	done
+
+	# Install base packages
+	pacstrap /mnt base base-devel linux linux-firmware neovim "$CPU"-ucode
+
+	# Generate FSTAB
+	genfstab -U /mnt > /mnt/etc/fstab
+	echo 'tmpfs /tmp tmpfs nosuid,nodev,noatime,size=6G 0 0' >> /mnt/etc/fstab
+	echo 'tmpfs /dev/shm tmpfs nosuid,nodev,noexec,noatime,size=1G 0 0' >> /mnt/etc/fstab
+	echo 'proc /proc proc nosuid,nodev,noexec,gid=proc,hidepid=2 0 0' >> /mnt/etc/fstab
+
+	cp "$0" /mnt
+	arch-chroot /mnt /"${0##*/}"
+}
 
 Postinstall() {
 	# Set date and time
@@ -115,10 +119,14 @@ Postinstall() {
 	echo "ParallelDownloads = $(( $(nproc) + 1 ))" >> /etc/pacman.conf
 	pacman -S --noconfirm efibootmgr dosfstools opendoas
 
+	Disk=$(findmnt / -o SOURCE --noheadings)
+
 	if [[ $Disk == *nvme* ]]; then
 		Modules=nvme
+		Disk="${Disk/p*/}"
 	else
 		Modules='ahci sd_mod'
+		Disk="${Disk/[1-9]*/}"
 	fi
 
 	while read; do
@@ -157,7 +165,7 @@ Postinstall() {
 	unset -v URL
 
 	# Install bootloader to UEFI
-	System=$(findmnt -o UUID / | tail -n 1)
+	System=$(findmnt / -o UUID --noheadings)
 	efibootmgr --disk "$Disk" --part 1 --create \
 		--label 'Arch Linux' \
 		--loader '\vmlinuz-linux' \
@@ -224,6 +232,11 @@ Postinstall() {
 	unset -v File
 }
 
-arch-chroot /mnt <<-EOF
+read Root _ <<< "$(ls -di /)"
+read Init _ <<< "$(ls -di /proc/1/root/.)"
+
+if (( Root == Init )); then
+	Preinstall
+else
 	Postinstall
-EOF
+fi
