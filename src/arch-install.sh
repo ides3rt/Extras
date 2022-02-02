@@ -14,7 +14,7 @@ unset -v VendorID
 
 Preinstall() {
 	# Load my keymaps
-	URL=https://raw.githubusercontent.com/ides3rt/colemak-dhk/master/src/colemak-dhk.map
+	URL=https://raw.githubusercontent.com/ides3rt/grammak/master/src/grammak-iso.map
 	curl -O "$URL"; gzip "${URL##*/}"
 	loadkeys "${URL##*/}".gz
 	unset -v URL
@@ -33,25 +33,12 @@ Preinstall() {
 		mkfs.btrfs -f -L Arch "$Disk$P"2
 
 		mount "$Disk$P"2 /mnt
-		for Subvol in @ @home @opt @root @srv @local \
-			@cache @log @spool @tmp
-		do
-			btrfs su cr "$Subvol"
-		done; unset -v Subvol
+		btrfs su cr @; btrfs su cr @home
 		umount /mnt
 
 		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,autodefrag,subvol=@ "$Disk$P"2 /mnt
-		mkdir -p /mnt/{home,opt,root,srv,usr/local}
-		mkdir -p /mnt/var/{cache,log,spool,tmp}
+		mkdir -p /mnt/home
 		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,autodefrag,subvol=@home "$Disk$P"2 /mnt/home
-		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,autodefrag,subvol=@opt "$Disk$P"2 /mnt/opt
-		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,autodefrag,subvol=@root "$Disk$P"2 /mnt/root
-		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,autodefrag,subvol=@srv "$Disk$P"2 /mnt/srv
-		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,autodefrag,subvol=@local "$Disk$P"2 /mnt/usr/local
-		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,autodefrag,subvol=@cache "$Disk$P"2 /mnt/var/cache
-		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,autodefrag,subvol=@log "$Disk$P"2 /mnt/var/log
-		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,autodefrag,subvol=@spool "$Disk$P"2 /mnt/var/spool
-		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,autodefrag,subvol=@tmp "$Disk$P"2 /mnt/var/tmp
 
 		mkdir /mnt/boot
 		mount -o nosuid,nodev,noexec,noatime,fmask=0177,dmask=0077 "$Disk$P"2 /mnt/boot
@@ -178,18 +165,18 @@ Postinstall() {
 	done
 
 	# Install additional packages
-	pacman -S dash "$GPU" linux-headers xorg-server xorg-xinit xorg-xsetroot \
-		xorg-xrandr git wget man-db htop ufw bspwm man-pages rxvt-unicode feh \
-		maim exfatprogs picom rofi pipewire mpv pigz pacman-contrib aria2 \
-		arc-solid-gtk-theme papirus-icon-theme terminus-font zip unzip p7zip \
-		pbzip2 fzf pv rsync bc yt-dlp dunst rustup sccache xdotool xcape pwgen \
-		dbus-broker tmux links perl-image-exiftool firefox-developer-edition \
-		archiso sxhkd xclip
-	pacman -S --asdeps qemu edk2-ovmf memcached libnotify \
-		pipewire-pulse bash-completion
+	pacman -S dash nvidia linux-headers xorg-server xorg-xinit \
+		xorg-xsetroot xorg-xrandr git wget man-db htop ufw bspwm man-pages \
+		rxvt-unicode feh maim exfatprogs picom rofi pipewire mpv pigz \
+		pacman-contrib arc-solid-gtk-theme papirus-icon-theme aria2 \
+		terminus-font zip unzip p7zip pbzip2 rsync bc yt-dlp dunst \
+		rustup sccache xdotool pwgen dbus-broker tmux links archiso \
+		firefox-developer-edition sxhkd xclip perl-image-exiftool
+	pacman -S --asdeps qemu edk2-ovmf memcached libnotify pipewire-pulse \
+		bash-completion
 	unset -v GPU
 
-	# Configuration1
+	# Configuration 1
 	ufw enable
 	systemctl disable dbus
 	systemctl enable dbus-broker fstrim.timer avahi-daemon ufw
@@ -199,7 +186,7 @@ Postinstall() {
 	ln -sf /usr/share/fontconfig/conf.avail/10-sub-pixel-rgb.conf /etc/fonts/conf.d/
 	ln -sf /usr/share/fontconfig/conf.avail/11-lcdfilter-default.conf /etc/fonts/conf.d/
 
-	# Configuration2
+	# Configuration 2
 	ln -sfT dash /bin/sh
 	groupadd -r doas; groupadd -r fstab
 	echo 'permit nolog :doas' > /etc/doas.conf
@@ -221,13 +208,13 @@ Postinstall() {
 	unset -v Groups
 
 	# Download my keymaps
-	URL=https://raw.githubusercontent.com/ides3rt/colemak-dhk/master/installer.sh
+	URL=https://raw.githubusercontent.com/ides3rt/grammak/master/installer.sh
 	curl -O "$URL"; bash "${URL##*/}"
 	unset -v URL
 
 	# My keymap
 	File=/etc/vconsole.conf
-	echo 'KEYMAP=colemak-dhk' > "$File"
+	echo 'KEYMAP=grammak-iso' > "$File"
 	echo 'FONT=ter-118b' >> "$File"
 	unset -v File
 }
