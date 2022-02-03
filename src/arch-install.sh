@@ -139,8 +139,8 @@ Postinstall() {
 		BINARIES=()
 		FILES=()
 		HOOKS=(base modconf)
-		COMPRESSION="xz"
-		COMMPRESSION_OPTIONS=(-9 -e -T0)
+		COMPRESSION="lz4"
+		COMMPRESSION_OPTIONS=(-12 --favor-decSpeed)
 	EOF
 
 	rm -f /boot/initramfs-linux-fallback.img
