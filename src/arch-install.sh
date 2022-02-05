@@ -36,9 +36,9 @@ Preinstall() {
 		btrfs su cr @; btrfs su cr @home
 		umount /mnt
 
-		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,autodefrag,subvol=@ "$Disk$P"2 /mnt
+		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@ "$Disk$P"2 /mnt
 		mkdir -p /mnt/home
-		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,autodefrag,subvol=@home "$Disk$P"2 /mnt/home
+		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@home "$Disk$P"2 /mnt/home
 
 		mkdir /mnt/boot
 		mount -o nosuid,nodev,noexec,noatime,fmask=0177,dmask=0077 "$Disk$P"2 /mnt/boot
@@ -109,7 +109,7 @@ Postinstall() {
 	Disk=$(findmnt / -o SOURCE --noheadings)
 
 	if [[ $Disk == *nvme* ]]; then
-		Modules=nvme
+		Modules='nvme nvme_core'
 		Disk="${Disk/p*/}"
 	else
 		Modules='ahci sd_mod'
