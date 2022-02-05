@@ -33,16 +33,34 @@ Preinstall() {
 		mkfs.btrfs -f -L Arch "$Disk$P"2
 
 		mount "$Disk$P"2 /mnt
-		btrfs su cr @; btrfs su cr @home
+		btrfs su cr @
 		umount /mnt
 
 		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@ "$Disk$P"2 /mnt
-		mkdir -p /mnt/home
-		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@home "$Disk$P"2 /mnt/home
 
 		mkdir /mnt/boot
-		mount -o nosuid,nodev,noexec,noatime,fmask=0177,dmask=0077 "$Disk$P"2 /mnt/boot
+		mount -o nosuid,nodev,noexec,noatime,fmask=0177,dmask=0077 "$Disk$P"1 /mnt/boot
 
+		Subvols=(
+			opt
+			root
+			usr/local
+			var/cache
+			var/local
+			var/log
+			var/opt
+			var/spool
+			var/tmp
+		)
+
+		mkdir /mnt/{usr,var}
+		for Subvol in "${Subvols[@]}"; {
+			btrfs su cr /mnt/$Subvol
+		}
+
+		mkdir /mnt/var/local/{home,srv}
+		ln -s var/local/home /mnt
+		ln -s var/local/srv /mnt
 	done
 
 	# Install base packages
