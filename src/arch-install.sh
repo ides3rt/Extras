@@ -33,56 +33,73 @@ Preinstall() {
 		mkfs.btrfs -f -L Arch "$Disk$P"2
 
 		mount "$Disk$P"2 /mnt
-		btrfs su cr @
+		btrfs su cr /mnt/@
+
+		btrfs su cr /mnt/@/opt
+		btrfs su cr /mnt/@/root
+
+		btrfs su cr /mnt/@/usr
+		btrfs su cr /mnt/@/usr/local
+
+		btrfs su cr /mnt/@/var
+		btrfs su cr /mnt/@/var/cache
+		btrfs su cr /mnt/@/var/local
+		btrfs su cr /mnt/@/var/log
+		btrfs su cr /mnt/@/var/opt
+		btrfs su cr /mnt/@/var/spool
+		btrfs su cr /mnt/@/var/tmp
+
+		btrfs su cr /mnt/@/.snapshots
+		mkdir /mnt/@/1
+		btrfs su cr /mnt/@/.snapshots/1/snapshot
+		btrfs su set-default /mnt/@/.snapshots/1/snapshot
+
 		umount /mnt
+		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async "$Disk$P"2 /mnt
 
-		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@ "$Disk$P"2 /mnt
+		mkdir -p /mnt/{boot,opt,root,usr/local,var/cache,var/local,var/log,var/opt,var/spool,var/tmp}
 
-		mkdir /mnt/boot
-		mount -o nosuid,nodev,noexec,noatime,fmask=0177,dmask=0077 "$Disk$P"1 /mnt/boot
-
-		Subvols=(
-			opt
-			root
-			usr/local
-			var/cache
-			var/local
-			var/log
-			var/opt
-			var/spool
-			var/tmp
-		)
-
-		mkdir /mnt/{usr,var}
-		for Subvol in "${Subvols[@]}"; {
-			btrfs su cr /mnt/$Subvol
-		}
+		mkdir -p /mnt/var/lib/{machines,portables}
+		chmod 700 /mnt/var/lib/{machines,portables}
 
 		mkdir /mnt/var/local/{home,srv}
-		ln -s var/local/home /mnt
-		ln -s var/local/srv /mnt
+		ln -s var/local/home /mnt; ln -s var/local/srv /mnt
+
+		mount -o nosuid,nodev,noexec,noatime,fmask=0177,dmask=0077 "$Disk$P"1 /mnt/boot
+		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/opt "$Disk$P"2 /mnt/opt
+		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/root "$Disk$P"2 /mnt/root
+		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/usr/local "$Disk$P"2 /mnt/usr/local
+		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/var/cache "$Disk$P"2 /mnt/var/cache
+		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/var/local "$Disk$P"2 /mnt/var/local
+		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/var/log "$Disk$P"2 /mnt/var/log
+		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/var/opt "$Disk$P"2 /mnt/var/opt
+		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/var/spool "$Disk$P"2 /mnt/var/spool
+		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/var/tmp "$Disk$P"2 /mnt/var/tmp
+
 	done
 
 	# Install base packages
 	pacstrap /mnt base base-devel linux linux-firmware neovim "$CPU"-ucode
 
 	# Generate FSTAB
-	genfstab -U /mnt > /mnt/etc/fstab
+	genfstab -U /mnt >> /mnt/etc/fstab
 	echo 'tmpfs /tmp tmpfs nosuid,nodev,noatime,size=6G 0 0' >> /mnt/etc/fstab
 	echo 'tmpfs /dev/shm tmpfs nosuid,nodev,noexec,noatime,size=1G 0 0' >> /mnt/etc/fstab
 	echo 'proc /proc proc nosuid,nodev,noexec,gid=proc,hidepid=2 0 0' >> /mnt/etc/fstab
 
-	cp "$0" /mnt
+	cp "$0" /mnt; chmod 755 /mnt/"${0##*/}"
 	arch-chroot /mnt /"${0##*/}"
 }
 
 Postinstall() {
 	# Set date and time
-	printf '%s\n' "Date/time format is 'yyyy-mm-dd HH:nn:ss'..."
-	read -p 'Enter your current date/time: ' Date
-	hwclock --set --date="$Date"
-	hwclock --hctosys
-	unset -v Date
+	while :; do
+		read -p 'Your timezone: ' Timezone
+		[[ -f /usr/share/zoneinfo/$Timezone ]] && break
+		printf '%s\n' "Err: '$Timezone' doesn't exists..." 1>&2
+	done
+
+	ln -sf /usr/share/zoneinfo/"$Timezone" /etc/localtime
 
 	# Set locale
 	echo 'en_US.UTF-8 UTF-8' > /etc/locale.gen
@@ -169,13 +186,31 @@ Postinstall() {
 	curl -O "$URL"; bash "${URL##*/}"
 	unset -v URL
 
-	# Install bootloader to UEFI
+	# Find rootfs UUID
 	System=$(findmnt / -o UUID --noheadings)
+
+	# Required Kernel Parameter
+	KP="root=UUID=$System ro initrd=\\$CPU-ucode.img initrd=\\initramfs-linux.img"
+
+	# Speed improvement
+	KP+=' quiet libahci.ignore_sss=1 zswap.enabled=0'
+
+	# Turn off CPU Mitigations
+	KP+=' spectre_v2=on spec_store_bypass_disable=on tsx=off tsx_async_abort=full,nosmt'
+	KP+=' mds=full,nosmt l1tf=full,force nosmt=force kvm.nx_huge_pages=force'
+
+	# Distrust CPU
+	KP+=' random.trust_cpu=off'
+
+	# Avoid holes in IOMMU
+	KP+=' efi=disable_early_pci_dma'
+
+	# Install bootloader to UEFI
 	efibootmgr --disk "$Disk" --part 1 --create \
 		--label 'Arch Linux' \
 		--loader '\vmlinuz-linux' \
-		--unicode "root=UUID=$System rootflags=subvolid=256 ro initrd=\\$CPU-ucode.img initrd=\\initramfs-linux.img quiet libahci.ignore_sss=1 zswap.enabled=0"
-	unset -v System ESPPosition FSSys Disk Modules CPU
+		--unicode "$KP"
+	unset -v System ESPPosition FSSys Disk Modules CPU KP
 
 	PS3='Select your GPU [1-3]: '
 	select GPU in xf86-video-amdgpu xf86-video-intel nvidia; do
@@ -183,7 +218,7 @@ Postinstall() {
 	done
 
 	# Install additional packages
-	pacman -S dash nvidia linux-headers xorg-server xorg-xinit \
+	pacman -S dash "$GPU" linux-headers xorg-server xorg-xinit \
 		xorg-xsetroot xorg-xrandr git wget man-db htop ufw bspwm man-pages \
 		rxvt-unicode feh maim exfatprogs picom rofi pipewire mpv pigz \
 		pacman-contrib arc-solid-gtk-theme papirus-icon-theme aria2 \
@@ -212,6 +247,8 @@ Postinstall() {
 	chown :doas /etc/doas.conf; chown :fstab /etc/fstab
 	sed -i '/required/s/#//' /etc/pam.d/su
 	sed -i '/required/s/#//' /etc/pam.d/su-l
+	sed -i 's/ nullok//g' /etc/pam.d/system-auth
+	echo '* hard core 0' >> /etc/security/limits.conf
 
 	# Define groups
 	Groups='proc,games,dbus,scanner,fstab,doas,users'
