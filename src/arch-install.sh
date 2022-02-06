@@ -12,11 +12,13 @@ case "$VendorID" in
 esac
 unset -v VendorID
 
+sed -i "s/#ParallelDownloads = 5/ParallelDownloads = $(( $(nproc) + 1 ))/" /etc/pacman.conf
+
 Preinstall() {
 	# Load my keymaps
 	URL=https://raw.githubusercontent.com/ides3rt/grammak/master/src/grammak-iso.map
 	curl -O "$URL"; gzip "${URL##*/}"
-	loadkeys "${URL##*/}".gz
+	loadkeys "${URL##*/}".gz 2>/dev/null
 	unset -v URL
 
 	# Partition, format, and mount the drive
@@ -38,10 +40,10 @@ Preinstall() {
 		btrfs su cr /mnt/@/opt
 		btrfs su cr /mnt/@/root
 
-		btrfs su cr /mnt/@/usr
+		mkdir /mnt/@/usr
 		btrfs su cr /mnt/@/usr/local
 
-		btrfs su cr /mnt/@/var
+		mkdir /mnt/@/var
 		btrfs su cr /mnt/@/var/cache
 		btrfs su cr /mnt/@/var/local
 		btrfs su cr /mnt/@/var/log
@@ -50,20 +52,17 @@ Preinstall() {
 		btrfs su cr /mnt/@/var/tmp
 
 		btrfs su cr /mnt/@/.snapshots
-		mkdir /mnt/@/1
+		mkdir /mnt/@/.snapshots/1
 		btrfs su cr /mnt/@/.snapshots/1/snapshot
 		btrfs su set-default /mnt/@/.snapshots/1/snapshot
 
 		umount /mnt
 		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async "$Disk$P"2 /mnt
 
-		mkdir -p /mnt/{boot,opt,root,usr/local,var/cache,var/local,var/log,var/opt,var/spool,var/tmp}
+		mkdir -p /mnt/{boot,opt,root,usr/local,var/cache,var/local,var/log,var/opt,var/spool,var/tmp,.snapshots}
 
 		mkdir -p /mnt/var/lib/{machines,portables}
 		chmod 700 /mnt/var/lib/{machines,portables}
-
-		mkdir /mnt/var/local/{home,srv}
-		ln -s var/local/home /mnt; ln -s var/local/srv /mnt
 
 		mount -o nosuid,nodev,noexec,noatime,fmask=0177,dmask=0077 "$Disk$P"1 /mnt/boot
 		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/opt "$Disk$P"2 /mnt/opt
@@ -75,20 +74,42 @@ Preinstall() {
 		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/var/opt "$Disk$P"2 /mnt/var/opt
 		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/var/spool "$Disk$P"2 /mnt/var/spool
 		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/var/tmp "$Disk$P"2 /mnt/var/tmp
+		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/.snapshots "$Disk$P"2 /mnt/.snapshots
 
+		break
 	done
 
 	# Install base packages
 	pacstrap /mnt base base-devel linux linux-firmware neovim "$CPU"-ucode
 
+	# Use /var/local as 'home'
+	mkdir -p /mnt/var/local/{home,srv/http,srv/ftp}
+	rm -r /mnt/{home,srv}
+	ln -sf var/local/home /mnt/home
+	ln -sf var/local/srv /mnt/srv
+
 	# Generate FSTAB
 	genfstab -U /mnt >> /mnt/etc/fstab
-	echo 'tmpfs /tmp tmpfs nosuid,nodev,noatime,size=6G 0 0' >> /mnt/etc/fstab
-	echo 'tmpfs /dev/shm tmpfs nosuid,nodev,noexec,noatime,size=1G 0 0' >> /mnt/etc/fstab
-	echo 'proc /proc proc nosuid,nodev,noexec,gid=proc,hidepid=2 0 0' >> /mnt/etc/fstab
 
-	cp "$0" /mnt; chmod 755 /mnt/"${0##*/}"
-	arch-chroot /mnt /"${0##*/}"
+	# Clean up FSTAB
+	sed -i 's/,subvol=\/@\/\.snapshots\/1\/snapshot//' /mnt/etc/fstab
+	sed -i 's/,subvolid=[[:digit:]]*//; s/\/@/@/' /mnt/etc/fstab
+
+	# Optimize FSTAB
+	while read; do
+		printf '%s\n' "$REPLY"
+	done <<-EOF >> /mnt/etc/fstab
+		tmpfs /tmp tmpfs nosuid,nodev,noatime,size=6G 0 0
+
+		tmpfs /dev/shm tmpfs nosuid,nodev,noexec,noatime,size=1G 0 0
+
+		proc /proc proc nosuid,nodev,noexec,gid=proc,hidepid=2 0 0
+
+	EOF
+
+	cp ./"$0" /mnt
+	arch-chroot /mnt bash "${0##*/}"
+	umount -R /mnt
 }
 
 Postinstall() {
@@ -138,8 +159,7 @@ Postinstall() {
 	EOF
 
 	# Install bootloader
-	echo "ParallelDownloads = $(( $(nproc) + 1 ))" >> /etc/pacman.conf
-	pacman -S --noconfirm efibootmgr dosfstools opendoas
+	pacman -S --noconfirm efibootmgr dosfstools opendoas btrfs-progs
 
 	Disk=$(findmnt / -o SOURCE --noheadings)
 
@@ -195,22 +215,12 @@ Postinstall() {
 	# Speed improvement
 	KP+=' quiet libahci.ignore_sss=1 zswap.enabled=0'
 
-	# Turn off CPU Mitigations
-	KP+=' spectre_v2=on spec_store_bypass_disable=on tsx=off tsx_async_abort=full,nosmt'
-	KP+=' mds=full,nosmt l1tf=full,force nosmt=force kvm.nx_huge_pages=force'
-
-	# Distrust CPU
-	KP+=' random.trust_cpu=off'
-
-	# Avoid holes in IOMMU
-	KP+=' efi=disable_early_pci_dma'
-
 	# Install bootloader to UEFI
 	efibootmgr --disk "$Disk" --part 1 --create \
 		--label 'Arch Linux' \
 		--loader '\vmlinuz-linux' \
 		--unicode "$KP"
-	unset -v System ESPPosition FSSys Disk Modules CPU KP
+	unset -v System Disk Modules CPU KP
 
 	PS3='Select your GPU [1-3]: '
 	select GPU in xf86-video-amdgpu xf86-video-intel nvidia; do
@@ -257,10 +267,12 @@ Postinstall() {
 	# Create user
 	while :; do
 		read -p 'Your username: ' Username
-		useradd -mG "$Groups" "$Username"
-		passwd "$Username" && break
+		useradd -mG "$Groups" "$Username" && break
 	done
-	unset -v Groups
+
+	# Enter password
+	while :; do passwd "$Username" && break; done
+	unset -v Groups Username
 
 	# Download my keymaps
 	URL=https://raw.githubusercontent.com/ides3rt/grammak/master/installer.sh
@@ -272,6 +284,10 @@ Postinstall() {
 	echo 'KEYMAP=grammak-iso' > "$File"
 	echo 'FONT=ter-118b' >> "$File"
 	unset -v File
+
+	# Remove sudo(8)
+	pacman -Rnsc --noconfirm sudo
+	pacman -Sc --noconfirm
 }
 
 read Root _ <<< "$(ls -di /)"
