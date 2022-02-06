@@ -18,7 +18,7 @@ Mem=$(( ( $Mem / 1024 / 1024 + 1 ) * 2 ))
 
 echo 'zram' > /etc/modules-load.d/zram.conf
 
-echo 'options zram num_devices=1' > /etc/modprobe.d/zram.conf
+echo 'options zram num_devices=1' > /etc/modprobe.d/99-zram.conf
 
 Udev="KERNEL==\"zram0\", ATTR{comp_algorithm}=\"zstd\""
 Udev+=", ATTR{disksize}=\"${Mem}G\""
