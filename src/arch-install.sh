@@ -85,8 +85,8 @@ Preinstall() {
 	# Use /var/local as 'home'
 	mkdir -p /mnt/var/local/{home,srv/http,srv/ftp}
 	rm -r /mnt/{home,srv}
-	ln -sf var/local/home /mnt/home
-	ln -sf var/local/srv /mnt/srv
+	ln -s var/local/home /mnt/home
+	ln -s var/local/srv /mnt/srv
 
 	# Generate FSTAB
 	genfstab -U /mnt >> /mnt/etc/fstab
@@ -107,8 +107,12 @@ Preinstall() {
 
 	EOF
 
+	# Copy installer script to Chroot
 	cp ./"$0" /mnt
 	arch-chroot /mnt bash "${0##*/}"
+
+	# Clean up
+	rm -rf /mnt/{grammak,"${0##*/}",installer.sh,zram-setup.sh}
 	umount -R /mnt
 }
 
@@ -223,6 +227,7 @@ Postinstall() {
 		--unicode "$KP"
 	unset -v System Disk Modules CPU KP
 
+	# Select GPU
 	PS3='Select your GPU [1-3]: '
 	select GPU in xf86-video-amdgpu xf86-video-intel nvidia; do
 		[[ -n $GPU ]] && break
@@ -236,22 +241,27 @@ Postinstall() {
 		terminus-font zip unzip p7zip pbzip2 rsync bc yt-dlp dunst \
 		rustup sccache xdotool pwgen dbus-broker tmux links archiso \
 		firefox-developer-edition sxhkd xclip perl-image-exiftool
-	pacman -S --asdeps qemu edk2-ovmf memcached libnotify pipewire-pulse \
-		bash-completion
-	unset -v GPU
 
-	# Configuration 1
-	ufw enable
-	systemctl disable dbus
-	systemctl enable dbus-broker fstrim.timer avahi-daemon ufw
-	systemctl --global enable dbus-broker pipewire-pulse
-	ln -sf bin /usr/local/sbin
-	ln -sf /usr/share/fontconfig/conf.avail/10-hinting-slight.conf /etc/fonts/conf.d/
-	ln -sf /usr/share/fontconfig/conf.avail/10-sub-pixel-rgb.conf /etc/fonts/conf.d/
-	ln -sf /usr/share/fontconfig/conf.avail/11-lcdfilter-default.conf /etc/fonts/conf.d/
+	if (( $? == 0 )); then
+		# Install optional deps
+		pacman -S --asdeps --noconfirm qemu edk2-ovmf memcached libnotify \
+			pipewire-pulse bash-completion
 
-	# Configuration 2
-	ln -sfT dash /bin/sh
+		# Config additional packages
+		ufw enable
+		systemctl disable dbus
+		systemctl enable dbus-broker ufw
+		systemctl --global enable dbus-broker pipewire-pulse
+		ln -sfT dash /bin/sh
+		ln -sf /usr/share/fontconfig/conf.avail/10-hinting-slight.conf /etc/fonts/conf.d/
+		ln -sf /usr/share/fontconfig/conf.avail/10-sub-pixel-rgb.conf /etc/fonts/conf.d/
+		ln -sf /usr/share/fontconfig/conf.avail/11-lcdfilter-default.conf /etc/fonts/conf.d/
+	fi
+
+	# Config system
+	systemctl enable fstrim.timer
+	rmdir /usr/local/sbin
+	ln -s bin /usr/local/sbin
 	groupadd -r doas; groupadd -r fstab
 	echo 'permit nolog :doas' > /etc/doas.conf
 	chmod 640 /etc/doas.conf /etc/fstab
@@ -273,7 +283,7 @@ Postinstall() {
 
 	# Enter password
 	while :; do passwd "$Username" && break; done
-	unset -v Groups Username
+	unset -v Groups Username GPU
 
 	# Download my keymaps
 	URL=https://raw.githubusercontent.com/ides3rt/grammak/master/installer.sh
