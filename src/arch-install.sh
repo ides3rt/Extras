@@ -121,6 +121,7 @@ Postinstall() {
 	done
 
 	ln -sf /usr/share/zoneinfo/"$Timezone" /etc/localtime
+	hwclock --systohc
 
 	# Set locale
 	echo 'en_US.UTF-8 UTF-8' > /etc/locale.gen
