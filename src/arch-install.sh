@@ -12,6 +12,7 @@ case "$VendorID" in
 esac
 unset -v VendorID
 
+sed -i '/^#RemoteFileSigLevel/s/#//' /etc/pacman.conf
 sed -i "s/#ParallelDownloads = 5/ParallelDownloads = $(( $(nproc) + 1 ))/" /etc/pacman.conf
 
 read Root _ <<< "$(ls -di /)"
@@ -61,6 +62,7 @@ if (( Root == Init )); then
 		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async "$Disk$P"2 /mnt
 
 		mkdir -p /mnt/{boot,usr/local,var/cache,var/local,var/log,var/opt,var/spool,var/tmp,.snapshots}
+		chmod 700 /mnt/boot
 
 		mkdir -p /mnt/var/lib/{machines,portables}
 		chmod 700 /mnt/var/lib/{machines,portables}
@@ -79,7 +81,7 @@ if (( Root == Init )); then
 	done
 
 	# Install base packages
-	pacstrap /mnt base base-devel linux linux-firmware neovim "$CPU"-ucode
+	pacstrap /mnt base base-devel linux linux-headers linux-firmware neovim "$CPU"-ucode
 
 	# Symlink some directories
 	mkdir -p /mnt/var/local/{home,opt,root,srv/http,srv/ftp}
@@ -167,7 +169,7 @@ else
 	EOF
 
 	# Install bootloader
-	pacman -S --noconfirm efibootmgr opendoas btrfs-progs
+	pacman -S --noconfirm btrfs-progs efibootmgr dosfstools opendoas
 
 	Disk=$(findmnt / -o SOURCE --noheadings)
 
@@ -247,7 +249,7 @@ else
 	if (( $? == 0 )); then
 		# Install optional deps
 		pacman -S --asdeps --noconfirm qemu edk2-ovmf memcached libnotify \
-			pipewire-pulse bash-completion dosfstools
+			pipewire-pulse bash-completion
 
 		# Config additional packages
 		systemctl --global enable pipewire-pulse
@@ -266,11 +268,11 @@ else
 	ufw enable
 	systemctl disable dbus
 	systemctl enable dbus-broker ufw fstrim.timer
-	systemctl --global enable dbus-broker pipewire-pulse
+	systemctl --global enable dbus-broker
 	rmdir /usr/local/sbin; ln -s bin /usr/local/sbin
 	groupadd -r doas; groupadd -r fstab
 	echo 'permit nolog :doas' > /etc/doas.conf
-	chmod 640 /etc/doas.conf /etc/fstab
+	chmod 640 /etc/{doas.conf,fstab}
 	chown :doas /etc/doas.conf; chown :fstab /etc/fstab
 	sed -i '/required/s/#//' /etc/pam.d/su
 	sed -i '/required/s/#//' /etc/pam.d/su-l
