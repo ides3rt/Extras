@@ -85,7 +85,6 @@ if (( Root == Init )); then
 	mkdir -p /mnt/var/local/{home,opt,root,srv/http,srv/ftp}
 	rm -r /mnt/{home,opt,root,srv}
 	ln -s var/local/home var/local/opt var/local/root var/local/srv /mnt
-	ln -s run/media /mnt
 
 	# Generate FSTAB
 	genfstab -U /mnt >> /mnt/etc/fstab
@@ -168,7 +167,7 @@ else
 	EOF
 
 	# Install bootloader
-	pacman -S --noconfirm efibootmgr dosfstools opendoas btrfs-progs
+	pacman -S --noconfirm efibootmgr opendoas btrfs-progs
 
 	Disk=$(findmnt / -o SOURCE --noheadings)
 
@@ -241,24 +240,26 @@ else
 	pacman -S "$GPU" xorg-server xorg-xinit xorg-xsetroot xorg-xrandr \
 		git wget htop bspwm rxvt-unicode feh maim exfatprogs picom rofi \
 		pipewire mpv pigz pacman-contrib arc-solid-gtk-theme aria2 \
-		terminus-font zip unzip p7zip pbzip2 rsync bc yt-dlp dunst \
+		terminus-font zip unzip p7zip pbzip2 rsync bc yt-dlp dunst udisks2 \
 		rustup sccache xdotool pwgen tmux links archiso sxhkd xclip \
 		firefox-developer-edition perl-image-exiftool papirus-icon-theme
 
 	if (( $? == 0 )); then
 		# Install optional deps
 		pacman -S --asdeps --noconfirm qemu edk2-ovmf memcached libnotify \
-			pipewire-pulse bash-completion
+			pipewire-pulse bash-completion dosfstools
 
 		# Config additional packages
 		systemctl --global enable pipewire-pulse
-		ln -sf /usr/share/fontconfig/conf.avail/10-hinting-slight.conf /etc/fonts/conf.d/
-		ln -sf /usr/share/fontconfig/conf.avail/10-sub-pixel-rgb.conf /etc/fonts/conf.d/
-		ln -sf /usr/share/fontconfig/conf.avail/11-lcdfilter-default.conf /etc/fonts/conf.d/
+		sed -i '/encryption/s/luks1/luks2/' /etc/udisks2/udisks2.conf
+		ln -s run/media /mnt
+		ln -sf /usr/share/fontconfig/conf.avail/10-hinting-slight.conf /etc/fonts/conf.d
+		ln -sf /usr/share/fontconfig/conf.avail/10-sub-pixel-rgb.conf /etc/fonts/conf.d
+		ln -sf /usr/share/fontconfig/conf.avail/11-lcdfilter-default.conf /etc/fonts/conf.d
 	fi
 
 	# Optimize system
-	pacman -S --noconfirm dash ufw dbus-broker man-pages man-db udisks2
+	pacman -S --noconfirm dash ufw dbus-broker man-pages man-db
 
 	# Config system
 	ln -sfT dash /bin/sh
