@@ -249,7 +249,7 @@ else
 	if (( $? == 0 )); then
 		# Install optional deps
 		pacman -S --asdeps --noconfirm qemu edk2-ovmf memcached libnotify \
-			pipewire-pulse bash-completion
+			pipewire-pulse realtime-privileges rtkit bash-completion
 
 		# Config additional packages
 		systemctl --global enable pipewire-pulse
@@ -282,6 +282,7 @@ else
 	# Define groups
 	Groups='proc,games,dbus,scanner,fstab,doas,users'
 	Groups+=',video,render,lp,kvm,input,audio,wheel'
+	pacman -Q realtime-privileges &>/dev/null && Groups+=',realtime'
 
 	# Create user
 	while :; do
