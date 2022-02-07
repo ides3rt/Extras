@@ -37,9 +37,6 @@ Preinstall() {
 		mount "$Disk$P"2 /mnt
 		btrfs su cr /mnt/@
 
-		btrfs su cr /mnt/@/opt
-		btrfs su cr /mnt/@/root
-
 		mkdir /mnt/@/usr
 		btrfs su cr /mnt/@/usr/local
 
@@ -83,9 +80,11 @@ Preinstall() {
 	pacstrap /mnt base base-devel linux linux-firmware neovim "$CPU"-ucode
 
 	# Use /var/local as 'home'
-	mkdir -p /mnt/var/local/{home,srv/http,srv/ftp}
-	rm -r /mnt/{home,srv}
+	mkdir -p /mnt/var/local/{home,opt,root,srv/http,srv/ftp}
+	rm -r /mnt/{home,opt,root,srv}
 	ln -s var/local/home /mnt/home
+	ln -s var/local/opt /mnt/opt
+	ln -s var/local/root /mnt/root
 	ln -s var/local/srv /mnt/srv
 
 	# Generate FSTAB
@@ -93,7 +92,7 @@ Preinstall() {
 
 	# Clean up FSTAB
 	sed -i 's/,subvol=\/@\/\.snapshots\/1\/snapshot//' /mnt/etc/fstab
-	sed -i 's/,subvolid=[[:digit:]]*//; s/\/@/@/' /mnt/etc/fstab
+	sed -i 's/,subvolid=[[:digit:]]*//; s/\/@/@/; s/rw,//; s/,ssd//' /mnt/etc/fstab
 
 	# Optimize FSTAB
 	while read; do
@@ -234,13 +233,12 @@ Postinstall() {
 	done
 
 	# Install additional packages
-	pacman -S dash "$GPU" linux-headers xorg-server xorg-xinit \
-		xorg-xsetroot xorg-xrandr git wget man-db htop ufw bspwm man-pages \
-		rxvt-unicode feh maim exfatprogs picom rofi pipewire mpv pigz \
-		pacman-contrib arc-solid-gtk-theme papirus-icon-theme aria2 \
+	pacman -S "$GPU" xorg-server xorg-xinit xorg-xsetroot xorg-xrandr \
+		git wget htop bspwm rxvt-unicode feh maim exfatprogs picom rofi \
+		pipewire mpv pigz pacman-contrib arc-solid-gtk-theme aria2 \
 		terminus-font zip unzip p7zip pbzip2 rsync bc yt-dlp dunst \
-		rustup sccache xdotool pwgen dbus-broker tmux links archiso \
-		firefox-developer-edition sxhkd xclip perl-image-exiftool
+		rustup sccache xdotool pwgen tmux links archiso sxhkd xclip \
+		firefox-developer-edition perl-image-exiftool papirus-icon-theme
 
 	if (( $? == 0 )); then
 		# Install optional deps
@@ -248,20 +246,22 @@ Postinstall() {
 			pipewire-pulse bash-completion
 
 		# Config additional packages
-		ufw enable
-		systemctl disable dbus
-		systemctl enable dbus-broker ufw
-		systemctl --global enable dbus-broker pipewire-pulse
-		ln -sfT dash /bin/sh
+		systemctl --global enable pipewire-pulse
 		ln -sf /usr/share/fontconfig/conf.avail/10-hinting-slight.conf /etc/fonts/conf.d/
 		ln -sf /usr/share/fontconfig/conf.avail/10-sub-pixel-rgb.conf /etc/fonts/conf.d/
 		ln -sf /usr/share/fontconfig/conf.avail/11-lcdfilter-default.conf /etc/fonts/conf.d/
 	fi
 
+	# Optimize system
+	pacman -S --noconfirm dash ufw dbus-broker man-pages man-db
+
 	# Config system
-	systemctl enable fstrim.timer
-	rmdir /usr/local/sbin
-	ln -s bin /usr/local/sbin
+	ln -sfT dash /bin/sh
+	ufw enable
+	systemctl disable dbus
+	systemctl enable dbus-broker ufw fstrim.timer
+	systemctl --global enable dbus-broker pipewire-pulse
+	rmdir /usr/local/sbin; ln -s bin /usr/local/sbin
 	groupadd -r doas; groupadd -r fstab
 	echo 'permit nolog :doas' > /etc/doas.conf
 	chmod 640 /etc/doas.conf /etc/fstab
