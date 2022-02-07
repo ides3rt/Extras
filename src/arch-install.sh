@@ -14,7 +14,11 @@ unset -v VendorID
 
 sed -i "s/#ParallelDownloads = 5/ParallelDownloads = $(( $(nproc) + 1 ))/" /etc/pacman.conf
 
-Preinstall() {
+read Root _ <<< "$(ls -di /)"
+read Init _ <<< "$(ls -di /proc/1/root/.)"
+
+if (( Root == Init )); then
+
 	# Load my keymaps
 	URL=https://raw.githubusercontent.com/ides3rt/grammak/master/src/grammak-iso.map
 	curl -O "$URL"; gzip "${URL##*/}"
@@ -77,10 +81,11 @@ Preinstall() {
 	# Install base packages
 	pacstrap /mnt base base-devel linux linux-firmware neovim "$CPU"-ucode
 
-	# Use /var/local as 'home'
+	# Symlink some directories
 	mkdir -p /mnt/var/local/{home,opt,root,srv/http,srv/ftp}
 	rm -r /mnt/{home,opt,root,srv}
 	ln -s var/local/home var/local/opt var/local/root var/local/srv /mnt
+	ln -s run/media /mnt
 
 	# Generate FSTAB
 	genfstab -U /mnt >> /mnt/etc/fstab
@@ -108,9 +113,9 @@ Preinstall() {
 	# Clean up
 	rm -rf /mnt/{grammak,"${0##*/}",installer.sh,zram-setup.sh}
 	umount -R /mnt
-}
 
-Postinstall() {
+else
+
 	# Set date and time
 	while :; do
 		read -p 'Your timezone: ' Timezone
@@ -253,7 +258,7 @@ Postinstall() {
 	fi
 
 	# Optimize system
-	pacman -S --noconfirm dash ufw dbus-broker man-pages man-db
+	pacman -S --noconfirm dash ufw dbus-broker man-pages man-db udisks2
 
 	# Config system
 	ln -sfT dash /bin/sh
@@ -299,13 +304,5 @@ Postinstall() {
 	# Remove sudo(8)
 	pacman -Rnsc --noconfirm sudo
 	pacman -Sc --noconfirm
-}
 
-read Root _ <<< "$(ls -di /)"
-read Init _ <<< "$(ls -di /proc/1/root/.)"
-
-if (( Root == Init )); then
-	Preinstall
-else
-	Postinstall
 fi
