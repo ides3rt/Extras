@@ -132,8 +132,13 @@ Postinstall() {
 	unset -v Hostname
 
 	# Networking
-	echo '127.0.0.1 localhost' >> /etc/hosts
-	echo '::1 localhost' >> /etc/hosts
+	while read; do
+		printf '%s\n' "$REPLY"
+	done <<-EOF >> /etc/hosts
+
+		127.0.0.1 localhost
+		::1 localhost
+	EOF
 	systemctl enable systemd-networkd systemd-resolved
 
 	while read; do
