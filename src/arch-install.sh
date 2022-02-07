@@ -56,14 +56,12 @@ Preinstall() {
 		umount /mnt
 		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async "$Disk$P"2 /mnt
 
-		mkdir -p /mnt/{boot,opt,root,usr/local,var/cache,var/local,var/log,var/opt,var/spool,var/tmp,.snapshots}
+		mkdir -p /mnt/{boot,usr/local,var/cache,var/local,var/log,var/opt,var/spool,var/tmp,.snapshots}
 
 		mkdir -p /mnt/var/lib/{machines,portables}
 		chmod 700 /mnt/var/lib/{machines,portables}
 
 		mount -o nosuid,nodev,noexec,noatime,fmask=0177,dmask=0077 "$Disk$P"1 /mnt/boot
-		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/opt "$Disk$P"2 /mnt/opt
-		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/root "$Disk$P"2 /mnt/root
 		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/usr/local "$Disk$P"2 /mnt/usr/local
 		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/var/cache "$Disk$P"2 /mnt/var/cache
 		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/var/local "$Disk$P"2 /mnt/var/local
@@ -82,10 +80,7 @@ Preinstall() {
 	# Use /var/local as 'home'
 	mkdir -p /mnt/var/local/{home,opt,root,srv/http,srv/ftp}
 	rm -r /mnt/{home,opt,root,srv}
-	ln -s var/local/home /mnt/home
-	ln -s var/local/opt /mnt/opt
-	ln -s var/local/root /mnt/root
-	ln -s var/local/srv /mnt/srv
+	ln -s var/local/home var/local/opt var/local/root var/local/srv /mnt
 
 	# Generate FSTAB
 	genfstab -U /mnt >> /mnt/etc/fstab
