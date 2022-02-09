@@ -258,7 +258,7 @@ else
 		# Config "optional" packages
 		systemctl --global enable pipewire-pulse
 		sed -i '/encryption/s/luks1/luks2/' /etc/udisks2/udisks2.conf
-		ln -s run/media /mnt
+		ln -s run/media /media
 		ln -sf /usr/share/fontconfig/conf.avail/10-hinting-slight.conf /etc/fonts/conf.d
 		ln -sf /usr/share/fontconfig/conf.avail/10-sub-pixel-rgb.conf /etc/fonts/conf.d
 		ln -sf /usr/share/fontconfig/conf.avail/11-lcdfilter-default.conf /etc/fonts/conf.d
