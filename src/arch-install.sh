@@ -81,7 +81,7 @@ if (( Root == Init )); then
 	done
 
 	# Install base packages
-	pacstrap /mnt base base-devel linux linux-headers linux-firmware neovim "$CPU"-ucode
+	pacstrap /mnt base base-devel linux-hardened linux-hardened-headers linux-firmware neovim "$CPU"-ucode
 
 	# Symlink some directories
 	mkdir -p /mnt/var/local/{home,opt,root,srv/http,srv/ftp}
@@ -183,17 +183,17 @@ else
 
 	while read; do
 		printf '%s\n' "$REPLY"
-	done <<-EOF > /etc/mkinitcpio.d/linux.preset
-		# mkinitcpio preset file for the 'linux' package
+	done <<-EOF > /etc/mkinitcpio.d/linux-hardened.preset
+		# mkinitcpio preset file for the 'linux-hardened' package
 
 		ALL_config="/etc/mkinitcpio.conf"
-		ALL_kver="/boot/vmlinuz-linux"
+		ALL_kver="/boot/vmlinuz-linux-hardened"
 
 		PRESETS=('default')
 
-		default_image="/boot/initramfs-linux.img"
+		default_image="/boot/initramfs-linux-hardened.img"
 
-		fallback_image="/boot/initramfs-linux-fallback.img"
+		fallback_image="/boot/initramfs-linux-hardened-fallback.img"
 		fallback_options="-S autodetect"
 	EOF
 
@@ -208,7 +208,7 @@ else
 		COMMPRESSION_OPTIONS=(-12 --favor-decSpeed)
 	EOF
 
-	rm -f /boot/initramfs-linux-fallback.img
+	rm -f /boot/initramfs-linux-hardened-fallback.img
 	mkinitcpio -P
 
 	# Install Zram
@@ -220,7 +220,8 @@ else
 	System=$(findmnt / -o UUID --noheadings)
 
 	# Required Kernel Parameter
-	KP="root=UUID=$System ro initrd=\\$CPU-ucode.img initrd=\\initramfs-linux.img"
+	KP="root=UUID=$System ro initrd=\\$CPU-ucode.img"
+	KP+=' initrd=\initramfs-linux-hardened.img'
 
 	# Speed improvement
 	KP+=' quiet libahci.ignore_sss=1 zswap.enabled=0'
@@ -228,17 +229,17 @@ else
 	# Install bootloader to UEFI
 	efibootmgr --disk "$Disk" --part 1 --create \
 		--label 'Arch Linux' \
-		--loader '\vmlinuz-linux' \
+		--loader '\vmlinuz-linux-hardened' \
 		--unicode "$KP"
 	unset -v System Disk Modules CPU KP
 
 	# Select GPU
 	PS3='Select your GPU [1-3]: '
-	select GPU in xf86-video-amdgpu xf86-video-intel nvidia; do
+	select GPU in xf86-video-amdgpu xf86-video-intel nvidia-dkms; do
 		[[ -n $GPU ]] && break
 	done
 
-	# Install additional packages
+	# Install "optional" packages
 	pacman -S "$GPU" xorg-server xorg-xinit xorg-xsetroot xorg-xrandr \
 		git wget htop bspwm rxvt-unicode feh maim exfatprogs picom rofi \
 		pipewire mpv pigz pacman-contrib arc-solid-gtk-theme aria2 \
@@ -260,20 +261,43 @@ else
 		ln -sf /usr/share/fontconfig/conf.avail/11-lcdfilter-default.conf /etc/fonts/conf.d
 	fi
 
-	# Optimize system
+	# Install additonal packages
 	pacman -S --noconfirm dash ufw dbus-broker man-pages man-db
 
-	# Config system
-	ln -sfT dash /bin/sh
+	# Symlink DASH to SH
+	ln -sfT dash /bin/sh; mkdir /etc/pacman.d/hooks
+	while read; do
+		printf '%s\n' "$REPLY"
+	done <<-EOF > /etc/pacman.d/hooks/50-dash-symlink.hook
+		[Trigger]
+		Operation = Install
+		Operation = Upgrade
+		Type = Package
+		Target = bash
+
+		[Action]
+		Depends = dash
+		Description = Symlink dash to /bin/sh...
+		When = PostTransaction
+		Exec = /usr/bin/ln -sfT dash /bin/sh
+	EOF
+
+	# Enable services
 	ufw enable
 	systemctl disable dbus
 	systemctl enable dbus-broker ufw fstrim.timer
 	systemctl --global enable dbus-broker
+
+	# Symlink 'bin' to 'sbin'
 	rmdir /usr/local/sbin; ln -s bin /usr/local/sbin
+
+	# Change 'doas.conf' and 'fstab' permissions
 	groupadd -r doas; groupadd -r fstab
-	echo 'permit nolog :doas' > /etc/doas.conf
+	echo 'permit :doas' > /etc/doas.conf
 	chmod 640 /etc/{doas.conf,fstab}
 	chown :doas /etc/doas.conf; chown :fstab /etc/fstab
+
+	# Hardended system
 	sed -i '/required/s/#//' /etc/pam.d/su
 	sed -i '/required/s/#//' /etc/pam.d/su-l
 	sed -i 's/ nullok//g' /etc/pam.d/system-auth
