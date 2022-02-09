@@ -226,6 +226,9 @@ else
 	# Speed improvement
 	KP+=' quiet libahci.ignore_sss=1 zswap.enabled=0'
 
+	# Enable apparmor
+	KP+=' lsm=landlock,lockdown,yama,apparmor,bpf'
+
 	# Install bootloader to UEFI
 	efibootmgr --disk "$Disk" --part 1 --create \
 		--label 'Arch Linux' \
@@ -252,7 +255,7 @@ else
 		pacman -S --asdeps --noconfirm qemu edk2-ovmf memcached libnotify \
 			pipewire-pulse realtime-privileges rtkit bash-completion
 
-		# Config additional packages
+		# Config "optional" packages
 		systemctl --global enable pipewire-pulse
 		sed -i '/encryption/s/luks1/luks2/' /etc/udisks2/udisks2.conf
 		ln -s run/media /mnt
@@ -262,7 +265,7 @@ else
 	fi
 
 	# Install additonal packages
-	pacman -S --noconfirm dash ufw dbus-broker man-pages man-db
+	pacman -S --noconfirm dash ufw dbus-broker man-pages man-db apparmor
 
 	# Symlink DASH to SH
 	ln -sfT dash /bin/sh; mkdir /etc/pacman.d/hooks
@@ -285,7 +288,7 @@ else
 	# Enable services
 	ufw enable
 	systemctl disable dbus
-	systemctl enable dbus-broker ufw fstrim.timer
+	systemctl enable dbus-broker ufw apparmor auditd
 	systemctl --global enable dbus-broker
 
 	# Symlink 'bin' to 'sbin'
@@ -297,6 +300,11 @@ else
 	chmod 640 /etc/{doas.conf,fstab}
 	chown :doas /etc/doas.conf; chown :fstab /etc/fstab
 
+	# Enable logging for apparmor, and enable caching
+	groupadd -r audit
+	sed -i '/log_group/s/root/audit/' /etc/audit/auditd.conf
+	sed -i '/write-cache/s/#//' /etc/apparmor/parser.conf
+
 	# Hardended system
 	sed -i '/required/s/#//' /etc/pam.d/su
 	sed -i '/required/s/#//' /etc/pam.d/su-l
@@ -305,7 +313,7 @@ else
 
 	# Define groups
 	Groups='proc,games,dbus,scanner,fstab,doas,users'
-	Groups+=',video,render,lp,kvm,input,audio,wheel'
+	Groups+=',video,render,lp,kvm,input,audit,audio,wheel'
 	pacman -Q realtime-privileges &>/dev/null && Groups+=',realtime'
 
 	# Create user
