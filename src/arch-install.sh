@@ -47,6 +47,7 @@ if (( Root == Init )); then
 
 		mkdir -p /mnt/@/var/lib/libvirt
 		btrfs su cr /mnt/@/var/cache
+		btrfs su cr /mnt/@/var/lib/flatpak
 		btrfs su cr /mnt/@/var/lib/libvirt/images
 		btrfs su cr /mnt/@/var/local
 		btrfs su cr /mnt/@/var/log
@@ -55,22 +56,23 @@ if (( Root == Init )); then
 		btrfs su cr /mnt/@/var/tmp
 
 		btrfs su cr /mnt/@/.snapshots
-		mkdir /mnt/@/.snapshots/1
-		btrfs su cr /mnt/@/.snapshots/1/snapshot
-		btrfs su set-default /mnt/@/.snapshots/1/snapshot
+		mkdir /mnt/@/.snapshots/0
+		btrfs su cr /mnt/@/.snapshots/0/snapshot
+		btrfs su set-default /mnt/@/.snapshots/0/snapshot
 
 		umount /mnt
 		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async "$Disk$P"2 /mnt
 
-		mkdir -p /mnt/{boot,usr/local,var/cache,var/local,var/log,var/opt,var/spool,var/tmp,.snapshots}
+		mkdir -p /mnt/{.snapshots,boot,usr/local,var/cache,var/local,var/log,var/opt,var/spool,var/tmp}
 		chmod 700 /mnt/boot
 
-		mkdir -p /mnt/var/lib/{libvirt/images,machines,portables}
+		mkdir -p /mnt/var/lib/{flatpak,libvirt/images,machines,portables}
 		chmod 700 /mnt/var/lib/{machines,portables}
 
 		mount -o nosuid,nodev,noexec,noatime,fmask=0177,dmask=0077 "$Disk$P"1 /mnt/boot
 		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/usr/local "$Disk$P"2 /mnt/usr/local
 		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/var/cache "$Disk$P"2 /mnt/var/cache
+		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/var/lib/flatpak "$Disk$P"2 /mnt/var/lib/flatpak
 		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/var/lib/libvirt/images "$Disk$P"2 /mnt/var/lib/libvirt/images
 		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/var/local "$Disk$P"2 /mnt/var/local
 		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/var/log "$Disk$P"2 /mnt/var/log
@@ -94,7 +96,7 @@ if (( Root == Init )); then
 	genfstab -U /mnt >> /mnt/etc/fstab
 
 	# Clean up FSTAB
-	sed -i 's/,subvol=\/@\/\.snapshots\/1\/snapshot//' /mnt/etc/fstab
+	sed -i 's/,subvol=\/@\/\.snapshots\/0\/snapshot//' /mnt/etc/fstab
 	sed -i 's/,subvolid=[[:digit:]]*//; s/\/@/@/; s/rw,//; s/,ssd//' /mnt/etc/fstab
 
 	# Optimize FSTAB
@@ -263,6 +265,7 @@ else
 		archiso # Create Arch iso
 		udisks2 # Mount drive via polkit(8)
 		exfatprogs # ExFat support
+		flatpak # Flatpak
 		pacman-contrib # pacman(8) essentials
 		terminus-font # Better TTY font
 		pwgen # Password generator
@@ -300,9 +303,15 @@ else
 		# Install optional deps
 		pacman -S --asdeps --noconfirm "${OptsDeps[@]}"
 
-		# Config "optional" packages
+		# Enable services
 		systemctl --global enable pipewire-pulse
 		sed -i '/encryption/s/luks1/luks2/' /etc/udisks2/udisks2.conf
+
+		# Flatpak
+		flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+		flatpak update
+
+		# Create symlinks
 		ln -s run/media /
 		ln -sf /usr/share/fontconfig/conf.avail/10-hinting-slight.conf /etc/fonts/conf.d
 		ln -sf /usr/share/fontconfig/conf.avail/10-sub-pixel-rgb.conf /etc/fonts/conf.d
@@ -390,7 +399,7 @@ else
 	unset -v File
 
 	# Remove sudo(8)
-	pacman -Rnsc --noconfirm sudo
+	pacman -Rns --noconfirm sudo
 	pacman -Sc --noconfirm
 
 fi
