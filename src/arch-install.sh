@@ -12,7 +12,7 @@ case "$VendorID" in
 esac
 unset -v VendorID
 
-sed -i '/^#RemoteFileSigLevel/s/#//' /etc/pacman.conf
+sed -i '/RemoteFileSigLevel/s/#//' /etc/pacman.conf
 sed -i "s/#ParallelDownloads = 5/ParallelDownloads = $(( $(nproc) + 1 ))/" /etc/pacman.conf
 
 read Root _ <<< "$(ls -di /)"
@@ -20,7 +20,7 @@ read Init _ <<< "$(ls -di /proc/1/root/.)"
 
 if (( Root == Init )); then
 
-	# Load my keymaps
+	# Load my keymap
 	URL=https://raw.githubusercontent.com/ides3rt/grammak/master/src/grammak-iso.map
 	curl -O "$URL"; gzip "${URL##*/}"
 	loadkeys "${URL##*/}".gz 2>/dev/null
@@ -32,7 +32,7 @@ if (( Root == Init )); then
 		[[ -z $Disk ]] && continue
 
 		parted "$Disk" mklabel gpt
-		sgdisk "$Disk" -n=1:0:+512M -t=1:ef00
+		sgdisk "$Disk" -n=1:0:+1024M -t=1:ef00
 		sgdisk "$Disk" -n=2:0:0
 
 		[[ $Disk == *nvme* ]] && P=p
@@ -45,8 +45,9 @@ if (( Root == Init )); then
 		mkdir /mnt/@/usr
 		btrfs su cr /mnt/@/usr/local
 
-		mkdir /mnt/@/var
+		mkdir -p /mnt/@/var/lib/libvirt
 		btrfs su cr /mnt/@/var/cache
+		btrfs su cr /mnt/@/var/lib/libvirt/images
 		btrfs su cr /mnt/@/var/local
 		btrfs su cr /mnt/@/var/log
 		btrfs su cr /mnt/@/var/opt
@@ -61,15 +62,16 @@ if (( Root == Init )); then
 		umount /mnt
 		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async "$Disk$P"2 /mnt
 
-		mkdir -p /mnt/{boot,usr/local,var/cache,var/local,var/log,var/opt,var/spool,var/tmp,.snapshots}
+		mkdir -p /mnt/{boot,usr/local,var/cache,var/lib/libvirt/images,var/local,var/log,var/opt,var/spool,var/tmp,.snapshots}
 		chmod 700 /mnt/boot
 
-		mkdir -p /mnt/var/lib/{machines,portables}
+		mkdir -p /mnt/var/lib/{libvirt/images,machines,portables}
 		chmod 700 /mnt/var/lib/{machines,portables}
 
 		mount -o nosuid,nodev,noexec,noatime,fmask=0177,dmask=0077 "$Disk$P"1 /mnt/boot
 		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/usr/local "$Disk$P"2 /mnt/usr/local
 		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/var/cache "$Disk$P"2 /mnt/var/cache
+		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/var/lib/libvirt/images "$Disk$P"2 /mnt/var/lib/libvirt/images
 		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/var/local "$Disk$P"2 /mnt/var/local
 		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/var/log "$Disk$P"2 /mnt/var/log
 		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/var/opt "$Disk$P"2 /mnt/var/opt
@@ -168,9 +170,6 @@ else
 		UseDNS=false
 	EOF
 
-	# Install bootloader
-	pacman -S --noconfirm btrfs-progs efibootmgr dosfstools opendoas
-
 	Disk=$(findmnt / -o SOURCE --noheadings)
 
 	if [[ $Disk == *nvme* ]]; then
@@ -209,32 +208,43 @@ else
 	EOF
 
 	rm -f /boot/initramfs-linux-hardened-fallback.img
-	mkinitcpio -P
 
-	# Install Zram
-	URL=https://raw.githubusercontent.com/ides3rt/extras/master/src/zram-setup.sh
-	curl -O "$URL"; bash "${URL##*/}"
-	unset -v URL
+	AddsPkgs=(
+		btrfs-progs # BTRFS support
+		efibootmgr # UEFI manager
+		dosfstools # Fat and it's derivative support
+		opendoas # Privileges elevator
+		ufw # Firewall
+		apparmor # Applications sandbox
+		man-db # An interface to system manuals
+		man-pages # Linux manuals
+		dash # Faster sh(1)
+		dbus-broker # Better dbus(1)
+	)
+
+	# Install additional packages
+	pacman -S --noconfirm "${AddPkgs[@]}"
+	unset AddsPkgs
 
 	# Find rootfs UUID
 	System=$(findmnt / -o UUID --noheadings)
 
 	# Required Kernel Parameter
-	KP="root=UUID=$System ro initrd=\\$CPU-ucode.img"
-	KP+=' initrd=\initramfs-linux-hardened.img'
+	Kernel="root=UUID=$System ro initrd=\\$CPU-ucode.img"
+	Kernel+=' initrd=\initramfs-linux-hardened.img'
 
 	# Speed improvement
-	KP+=' quiet libahci.ignore_sss=1 zswap.enabled=0'
+	Kernel+=' quiet libahci.ignore_sss=1 zswap.enabled=0'
 
 	# Enable apparmor
-	KP+=' lsm=landlock,lockdown,yama,apparmor,bpf'
+	Kernel+=' lsm=landlock,lockdown,yama,apparmor,bpf'
 
 	# Install bootloader to UEFI
 	efibootmgr --disk "$Disk" --part 1 --create \
 		--label 'Arch Linux' \
 		--loader '\vmlinuz-linux-hardened' \
-		--unicode "$KP"
-	unset -v System Disk Modules CPU KP
+		--unicode "$Kernel"
+	unset -v System Disk Modules CPU Kernel
 
 	# Select GPU
 	PS3='Select your GPU [1-3]: '
@@ -242,33 +252,75 @@ else
 		[[ -n $GPU ]] && break
 	done
 
+	OptsPkgs=(
+		git wget rsync # Downloading tools
+		htop # System monitor
+		tmux # Terminal multiplexer
+		zip unzip # Additional compression algorithms
+		pigz p7zip pbzip2 # Faster compression
+		rustup sccache # Rust development
+		bc # Linux kernel make deps
+		archiso # Create Arch iso
+		udisks2 # Mount drive via polkit(8)
+		exfatprogs # ExFat support
+		pacman-contrib # pacman(8) essentials
+		terminus-font # Better TTY font
+		pwgen # Password generator
+		xorg-server xorg-xrandr # Xorg
+		xorg-xinit # Display manager
+		arc-solid-gtk-theme papirus-icon-theme # GTK themes
+		bspwm sxhkd xorg-xsetroot # bspwm(1) essentials
+		rxvt-unicode # Terminal Emulater
+		rofi # Programs launcher
+		pipewire # Sound server
+		dunst # Nofication daemon
+		picom # Compositer
+		feh # Wallpaper/Image viewer
+		maim xdotool # Screenshot tools
+		perl-image-exiftool # Image's metadata tools
+		firefox-developer-edition links # Browsers
+		mpv # Media player
+	)
+
+	OptsDeps=(
+		bash-completion # Better completion in Bash
+		memcached # Cache support in Rust
+		libnotify # Send notification
+		pipewire-pulse # Pulseaudio support in Pipewire
+		realtime-privileges rtkit # Realtime support in Pipewire
+		yt-dlp # Stream YT into mpv(1) support
+		aria2 # Faster yt-dlp(1)
+		xclip # X-server clipboard in support nvim(1)
+	)
+
 	# Install "optional" packages
-	pacman -S "$GPU" xorg-server xorg-xinit xorg-xsetroot xorg-xrandr \
-		git wget htop bspwm rxvt-unicode feh maim exfatprogs picom rofi \
-		pipewire mpv pigz pacman-contrib arc-solid-gtk-theme aria2 \
-		terminus-font zip unzip p7zip pbzip2 rsync bc yt-dlp dunst udisks2 \
-		rustup sccache xdotool pwgen tmux links archiso sxhkd xclip \
-		firefox-developer-edition perl-image-exiftool papirus-icon-theme
+	pacman -S "$GPU" "${OptsPkgs[@]}"
 
 	if (( $? == 0 )); then
 		# Install optional deps
-		pacman -S --asdeps --noconfirm qemu edk2-ovmf memcached libnotify \
-			pipewire-pulse realtime-privileges rtkit bash-completion
+		pacman -S --asdeps --noconfirm "${OptsDeps[@]}"
 
 		# Config "optional" packages
 		systemctl --global enable pipewire-pulse
 		sed -i '/encryption/s/luks1/luks2/' /etc/udisks2/udisks2.conf
-		ln -s run/media /media
+		ln -s run/media /
 		ln -sf /usr/share/fontconfig/conf.avail/10-hinting-slight.conf /etc/fonts/conf.d
 		ln -sf /usr/share/fontconfig/conf.avail/10-sub-pixel-rgb.conf /etc/fonts/conf.d
 		ln -sf /usr/share/fontconfig/conf.avail/11-lcdfilter-default.conf /etc/fonts/conf.d
 	fi
 
-	# Install additonal packages
-	pacman -S --noconfirm dash ufw dbus-broker man-pages man-db apparmor
+	unset OptsPkgs OptsDeps
+
+	# Install Zram
+	URL=https://raw.githubusercontent.com/ides3rt/extras/master/src/zram-setup.sh
+	curl -O "$URL"; bash "${URL##*/}"
+	unset -v URL
 
 	# Symlink DASH to SH
-	ln -sfT dash /bin/sh; mkdir /etc/pacman.d/hooks
+	ln -sfT dash /bin/sh
+
+	# Make it auto-symlink
+	mkdir /etc/pacman.d/hooks
 	while read; do
 		printf '%s\n' "$REPLY"
 	done <<-EOF > /etc/pacman.d/hooks/50-dash-symlink.hook
@@ -303,7 +355,7 @@ else
 	# Enable logging for apparmor, and enable caching
 	groupadd -r audit
 	sed -i '/log_group/s/root/audit/' /etc/audit/auditd.conf
-	sed -i '/write-cache/s/#//' /etc/apparmor/parser.conf
+	sed -i '/write-cache/s/#//; /Include/s/#//' /etc/apparmor/parser.conf
 
 	# Hardended system
 	sed -i '/required/s/#//' /etc/pam.d/su
@@ -312,8 +364,8 @@ else
 	echo '* hard core 0' >> /etc/security/limits.conf
 
 	# Define groups
-	Groups='proc,games,dbus,scanner,fstab,doas,users'
-	Groups+=',video,render,lp,kvm,input,audit,audio,wheel'
+	Groups='proc,games,dbus,scanner,audit,fstab,doas,users'
+	Groups+=',video,render,lp,kvm,input,audio,wheel'
 	pacman -Q realtime-privileges &>/dev/null && Groups+=',realtime'
 
 	# Create user
@@ -322,7 +374,7 @@ else
 		useradd -mG "$Groups" "$Username" && break
 	done
 
-	# Enter password
+	# Set a password
 	while :; do passwd "$Username" && break; done
 	unset -v Groups Username GPU
 
@@ -334,7 +386,7 @@ else
 	# My keymap
 	File=/etc/vconsole.conf
 	echo 'KEYMAP=grammak-iso' > "$File"
-	echo 'FONT=ter-118b' >> "$File"
+	pacman -Q terminus-font &>dev/null && echo 'FONT=ter-118b' >> "$File"
 	unset -v File
 
 	# Remove sudo(8)
