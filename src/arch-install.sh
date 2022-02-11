@@ -355,7 +355,7 @@ else
 	# Enable logging for apparmor, and enable caching
 	groupadd -r audit
 	sed -i '/log_group/s/root/audit/' /etc/audit/auditd.conf
-	sed -i '/write-cache/s/#//; /Include/s/#//' /etc/apparmor/parser.conf
+	sed -i '/write-cache/s/#//' /etc/apparmor/parser.conf
 
 	# Hardended system
 	sed -i '/required/s/#//' /etc/pam.d/su
