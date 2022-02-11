@@ -62,7 +62,7 @@ if (( Root == Init )); then
 		umount /mnt
 		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async "$Disk$P"2 /mnt
 
-		mkdir -p /mnt/{boot,usr/local,var/cache,var/lib/libvirt/images,var/local,var/log,var/opt,var/spool,var/tmp,.snapshots}
+		mkdir -p /mnt/{boot,usr/local,var/cache,var/local,var/log,var/opt,var/spool,var/tmp,.snapshots}
 		chmod 700 /mnt/boot
 
 		mkdir -p /mnt/var/lib/{libvirt/images,machines,portables}
