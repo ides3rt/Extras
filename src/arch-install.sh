@@ -36,15 +36,15 @@ if (( Root == Init )); then
 		sgdisk "$Disk" -n=2:0:0
 
 		[[ $Disk == *nvme* ]] && P=p
-		mkfs.fat -F 32 -n EFI "$Disk$P"1
+		mkfs.fat -F 32 -n ESP "$Disk$P"1
 
 		cryptsetup -h sha512 luksFormat "$Disk$P"2
-		cryptsetup open "$Disk$P"2 cryptroot
+		cryptsetup open "$Disk$P"2 luks2 || exit 1
 
-		Disk=/dev/mapper/cryptroot
-		mkfs.btrfs -f -L Arch "$Disk"
+		Mapper=/dev/mapper/luks2
+		mkfs.btrfs -f -L Arch "$Mapper"
 
-		mount "$Disk" /mnt
+		mount "$Mapper" /mnt
 		btrfs su cr /mnt/@
 
 		btrfs su cr /mnt/@/home
@@ -71,7 +71,7 @@ if (( Root == Init )); then
 		btrfs su set-default /mnt/@/.snapshots/0/snapshot
 
 		umount /mnt
-		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async "$Disk" /mnt
+		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async "$Mapper" /mnt
 
 		mkdir -p /mnt/{.snapshots,boot,home,opt,root,srv,usr/local,var/cache,var/local,var/log,var/opt,var/spool,var/tmp}
 		chmod 700 /mnt/boot
@@ -80,22 +80,22 @@ if (( Root == Init )); then
 		chmod 700 /mnt/var/lib/{machines,portables}
 
 		mount -o nosuid,nodev,noexec,noatime,fmask=0177,dmask=0077 "$Disk$P"1 /mnt/boot
-		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/home "$Disk" /mnt/home
-		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/opt "$Disk" /mnt/opt
-		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/root "$Disk" /mnt/root
-		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/srv "$Disk" /mnt/srv
-		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/usr/local "$Disk" /mnt/usr/local
-		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/var/cache "$Disk" /mnt/var/cache
-		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/var/lib/flatpak "$Disk" /mnt/var/lib/flatpak
-		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/var/lib/libvirt/images "$Disk" /mnt/var/lib/libvirt/images
-		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/var/local "$Disk" /mnt/var/local
-		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/var/log "$Disk" /mnt/var/log
-		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/var/opt "$Disk" /mnt/var/opt
-		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/var/spool "$Disk" /mnt/var/spool
-		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/var/tmp "$Disk" /mnt/var/tmp
-		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/.snapshots "$Disk" /mnt/.snapshots
+		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/home "$Mapper" /mnt/home
+		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/opt "$Mapper" /mnt/opt
+		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/root "$Mapper" /mnt/root
+		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/srv "$Mapper" /mnt/srv
+		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/usr/local "$Mapper" /mnt/usr/local
+		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/var/cache "$Mapper" /mnt/var/cache
+		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/var/lib/flatpak "$Mapper" /mnt/var/lib/flatpak
+		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/var/lib/libvirt/images "$Mapper" /mnt/var/lib/libvirt/images
+		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/var/local "$Mapper" /mnt/var/local
+		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/var/log "$Mapper" /mnt/var/log
+		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/var/opt "$Mapper" /mnt/var/opt
+		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/var/spool "$Mapper" /mnt/var/spool
+		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/var/tmp "$Mapper" /mnt/var/tmp
+		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/.snapshots "$Mapper" /mnt/.snapshots
 
-		unset -v Disk P
+		unset -v Disk P Mapper
 		break
 	done
 
@@ -107,7 +107,7 @@ if (( Root == Init )); then
 	sed -i 's/,subvol=\/@\/\.snapshots\/0\/snapshot//' /mnt/etc/fstab
 
 	# Clean up FSTAB
-	sed -i '/^#/d; s/,subvolid=[[:digit:]]*//; s/\/@/@/; s/rw,//; s/,ssd//; s/[[:space:]]*/ /g' /mnt/etc/fstab
+	sed -i '/^#/d; s/,subvolid=[[:digit:]]*//; s/\/@/@/; s/rw,//; s/,ssd//; s/[[:space:]]/ /g' /mnt/etc/fstab
 
 	# Optimize FSTAB
 	while read; do
@@ -125,9 +125,16 @@ if (( Root == Init )); then
 	cp ./"$0" /mnt
 	arch-chroot /mnt bash "${0##*/}"
 
-	# Clean up
+	# Remove /etc/resolv.conf as it's required for some programs
+	# to work correctly with systemd-networkd
+	rm -f /mnt/etc/resolv.conf
+
+	# Remove temp files
 	rm -rf /mnt/{grammak,"${0##*/}",installer.sh,zram-setup.sh}
+
+	# Unmount the partitions
 	umount -R /mnt
+	cryptsetup close luks2
 
 else
 
@@ -182,7 +189,7 @@ else
 		UseDNS=false
 	EOF
 
-	Disk=$(findmnt /boot -o SOURCE --noheadings)
+	Disk=$(findmnt -o SOURCE --noheadings /boot)
 
 	if [[ $Disk == *nvme* ]]; then
 		Modules='nvme nvme_core'
@@ -214,7 +221,7 @@ else
 	done <<-EOF > /etc/mkinitcpio.conf
 		MODULES=($Modules btrfs)
 		BINARIES=()
-		FILES=()
+		FILES=(/etc/cryptsetup-keys.d/luks2.key)
 		HOOKS=(systemd autodetect modconf keyboard sd-vconsole sd-encrypt)
 		COMPRESSION="lz4"
 		COMMPRESSION_OPTIONS=(-12 --favor-decSpeed)
@@ -236,19 +243,20 @@ else
 	)
 
 	# Install additional packages
-	pacman -S --noconfirm "${AddPkgs[@]}"
+	pacman -S --noconfirm "${AddsPkgs[@]}"
 	unset AddsPkgs
 
 	# Find rootfs UUID
-	System=$(findmnt / -o UUID --noheadings)
-
-	# Set rootfs UUID
-	Kernel="root=UUID=$System rd.luks.name=$UUID=cryptroot"
+	System=$(lsblk -o UUID --noheadings "$Disk$P"2 | tail -n 1)
+	Mapper=$(findmnt -o UUID --noheadings /)
 
 	# Options for LUKS
-	Kernel+=' rd.luks.options=timeout=10s,discard,password-echo=no,tries=1'
+	Kernel="rd.luks.name=$System=luks2 rd.luks.options=discard"
 
-	# Set initrd files
+	# Specify the rootfs
+	Kernel+=" root=UUID=$Mapper"
+
+	# Specify the initrd files
 	Kernel+=" ro initrd=\\$CPU-ucode.img initrd=\\initramfs-linux-hardened.img"
 
 	# Speed improvement
@@ -262,13 +270,18 @@ else
 		--label 'Arch Linux' \
 		--loader '\vmlinuz-linux-hardened' \
 		--unicode "$Kernel"
-	unset -v System Disk P Modules CPU Kernel
 
-	# Create keyfile to auto-mount LUKS device
+	# Create directory for keyfile to live in
 	mkdir /etc/cryptsetup-keys.d
 	chmod 700 /etc/cryptsetup-keys.d
-	dd bs=512 count=4 if=/dev/urandom of=/etc/cryptsetup-keys.d/cryptroot.key iflag=fullblock
-	chmod 600 /etc/cryptsetup-keys.d/cryptroot.key
+
+	# Create keyfile to auto-mount LUKS device
+	dd bs=512 count=4 if=/dev/urandom of=/etc/cryptsetup-keys.d/luks2.key iflag=fullblock &>/dev/null
+	chmod 600 /etc/cryptsetup-keys.d/luks2.key
+
+	# Add keyfile
+	cryptsetup -v luksAddKey "$Disk$P"2 /etc/cryptsetup-keys.d/luks2.key
+	unset -v CPU Disk P Modules System Mapper Kernel
 
 	# Select GPU
 	PS3='Select your GPU [1-3]: '
@@ -426,6 +439,9 @@ else
 	# Remove sudo(8)
 	pacman -Rns --noconfirm sudo
 	pacman -Sc --noconfirm
+
+	# Create initramfs again -- for mature
+	mkinitcpio -P
 
 	# Use 700 for newly create files
 	sed -i 's/022/077/' /etc/profile
