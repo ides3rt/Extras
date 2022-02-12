@@ -224,7 +224,7 @@ else
 		FILES=(/etc/cryptsetup-keys.d/luks2.key)
 		HOOKS=(systemd autodetect modconf keyboard sd-vconsole sd-encrypt)
 		COMPRESSION="lz4"
-		COMMPRESSION_OPTIONS=(-12 --favor-decSpeed)
+		COMPRESSION_OPTIONS=(-12 --favor-decSpeed)
 	EOF
 
 	rm -f /boot/initramfs-linux-hardened-fallback.img
