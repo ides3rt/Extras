@@ -31,16 +31,26 @@ if (( Root == Init )); then
 	select Disk in $(lsblk -dno PATH); do
 		[[ -z $Disk ]] && continue
 
-		parted "$Disk" mklabel gpt
+		parted "$Disk" mklabel gpt || exit 1
 		sgdisk "$Disk" -n=1:0:+1024M -t=1:ef00
 		sgdisk "$Disk" -n=2:0:0
 
 		[[ $Disk == *nvme* ]] && P=p
 		mkfs.fat -F 32 -n EFI "$Disk$P"1
-		mkfs.btrfs -f -L Arch "$Disk$P"2
 
-		mount "$Disk$P"2 /mnt
+		cryptsetup -h sha512 luksFormat "$Disk$P"2
+		cryptsetup open "$Disk$P"2 cryptroot
+
+		Disk=/dev/mapper/cryptroot
+		mkfs.btrfs -f -L Arch "$Disk"
+
+		mount "$Disk" /mnt
 		btrfs su cr /mnt/@
+
+		btrfs su cr /mnt/@/home
+		btrfs su cr /mnt/@/opt
+		btrfs su cr /mnt/@/root
+		btrfs su cr /mnt/@/srv
 
 		mkdir /mnt/@/usr
 		btrfs su cr /mnt/@/usr/local
@@ -61,43 +71,43 @@ if (( Root == Init )); then
 		btrfs su set-default /mnt/@/.snapshots/0/snapshot
 
 		umount /mnt
-		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async "$Disk$P"2 /mnt
+		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async "$Disk" /mnt
 
-		mkdir -p /mnt/{.snapshots,boot,usr/local,var/cache,var/local,var/log,var/opt,var/spool,var/tmp}
+		mkdir -p /mnt/{.snapshots,boot,home,opt,root,srv,usr/local,var/cache,var/local,var/log,var/opt,var/spool,var/tmp}
 		chmod 700 /mnt/boot
 
 		mkdir -p /mnt/var/lib/{flatpak,libvirt/images,machines,portables}
 		chmod 700 /mnt/var/lib/{machines,portables}
 
 		mount -o nosuid,nodev,noexec,noatime,fmask=0177,dmask=0077 "$Disk$P"1 /mnt/boot
-		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/usr/local "$Disk$P"2 /mnt/usr/local
-		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/var/cache "$Disk$P"2 /mnt/var/cache
-		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/var/lib/flatpak "$Disk$P"2 /mnt/var/lib/flatpak
-		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/var/lib/libvirt/images "$Disk$P"2 /mnt/var/lib/libvirt/images
-		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/var/local "$Disk$P"2 /mnt/var/local
-		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/var/log "$Disk$P"2 /mnt/var/log
-		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/var/opt "$Disk$P"2 /mnt/var/opt
-		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/var/spool "$Disk$P"2 /mnt/var/spool
-		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/var/tmp "$Disk$P"2 /mnt/var/tmp
-		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/.snapshots "$Disk$P"2 /mnt/.snapshots
+		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/home "$Disk" /mnt/home
+		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/opt "$Disk" /mnt/opt
+		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/root "$Disk" /mnt/root
+		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/srv "$Disk" /mnt/srv
+		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/usr/local "$Disk" /mnt/usr/local
+		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/var/cache "$Disk" /mnt/var/cache
+		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/var/lib/flatpak "$Disk" /mnt/var/lib/flatpak
+		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/var/lib/libvirt/images "$Disk" /mnt/var/lib/libvirt/images
+		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/var/local "$Disk" /mnt/var/local
+		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/var/log "$Disk" /mnt/var/log
+		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/var/opt "$Disk" /mnt/var/opt
+		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/var/spool "$Disk" /mnt/var/spool
+		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/var/tmp "$Disk" /mnt/var/tmp
+		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/.snapshots "$Disk" /mnt/.snapshots
 
+		unset -v Disk P
 		break
 	done
 
 	# Install base packages
-	pacstrap /mnt base base-devel linux-hardened linux-hardened-headers linux-firmware neovim "$CPU"-ucode
-
-	# Symlink some directories
-	mkdir -p /mnt/var/local/{home,opt,root,srv/http,srv/ftp}
-	rm -r /mnt/{home,opt,root,srv}
-	ln -s var/local/home var/local/opt var/local/root var/local/srv /mnt
+	pacstrap /mnt base base-devel linux-hardened linux-firmware neovim "$CPU"-ucode
 
 	# Generate FSTAB
-	genfstab -U /mnt >> /mnt/etc/fstab
+	genfstab -U /mnt > /mnt/etc/fstab
+	sed -i 's/,subvol=\/@\/\.snapshots\/0\/snapshot//' /mnt/etc/fstab
 
 	# Clean up FSTAB
-	sed -i 's/,subvol=\/@\/\.snapshots\/0\/snapshot//' /mnt/etc/fstab
-	sed -i 's/,subvolid=[[:digit:]]*//; s/\/@/@/; s/rw,//; s/,ssd//' /mnt/etc/fstab
+	sed -i '/^#/d; s/,subvolid=[[:digit:]]*//; s/\/@/@/; s/rw,//; s/,ssd//; s/[[:space:]]*/ /g' /mnt/etc/fstab
 
 	# Optimize FSTAB
 	while read; do
@@ -172,11 +182,12 @@ else
 		UseDNS=false
 	EOF
 
-	Disk=$(findmnt / -o SOURCE --noheadings)
+	Disk=$(findmnt /boot -o SOURCE --noheadings)
 
 	if [[ $Disk == *nvme* ]]; then
 		Modules='nvme nvme_core'
 		Disk="${Disk/p*/}"
+		P=p
 	else
 		Modules='ahci sd_mod'
 		Disk="${Disk/[1-9]*/}"
@@ -204,7 +215,7 @@ else
 		MODULES=($Modules btrfs)
 		BINARIES=()
 		FILES=()
-		HOOKS=(base modconf)
+		HOOKS=(systemd autodetect modconf keyboard sd-vconsole sd-encrypt)
 		COMPRESSION="lz4"
 		COMMPRESSION_OPTIONS=(-12 --favor-decSpeed)
 	EOF
@@ -231,9 +242,14 @@ else
 	# Find rootfs UUID
 	System=$(findmnt / -o UUID --noheadings)
 
-	# Required Kernel Parameter
-	Kernel="root=UUID=$System ro initrd=\\$CPU-ucode.img"
-	Kernel+=' initrd=\initramfs-linux-hardened.img'
+	# Set rootfs UUID
+	Kernel="root=UUID=$System rd.luks.name=$UUID=cryptroot"
+
+	# Options for LUKS
+	Kernel+=' rd.luks.options=timeout=10s,discard,password-echo=no,tries=1'
+
+	# Set initrd files
+	Kernel+=" ro initrd=\\$CPU-ucode.img initrd=\\initramfs-linux-hardened.img"
 
 	# Speed improvement
 	Kernel+=' quiet libahci.ignore_sss=1 zswap.enabled=0'
@@ -246,7 +262,13 @@ else
 		--label 'Arch Linux' \
 		--loader '\vmlinuz-linux-hardened' \
 		--unicode "$Kernel"
-	unset -v System Disk Modules CPU Kernel
+	unset -v System Disk P Modules CPU Kernel
+
+	# Create keyfile to auto-mount LUKS device
+	mkdir /etc/cryptsetup-keys.d
+	chmod 700 /etc/cryptsetup-keys.d
+	dd bs=512 count=4 if=/dev/urandom of=/etc/cryptsetup-keys.d/cryptroot.key iflag=fullblock
+	chmod 600 /etc/cryptsetup-keys.d/cryptroot.key
 
 	# Select GPU
 	PS3='Select your GPU [1-3]: '
@@ -295,6 +317,9 @@ else
 		aria2 # Faster yt-dlp(1)
 		xclip # X-server clipboard in support nvim(1)
 	)
+
+	# Install kernel headers for DKMS modules
+	[[ "$GPU" == nvidia-dkms ]] && OptsDeps+=( linux-hardened-headers )
 
 	# Install "optional" packages
 	pacman -S "$GPU" "${OptsPkgs[@]}"
@@ -401,5 +426,8 @@ else
 	# Remove sudo(8)
 	pacman -Rns --noconfirm sudo
 	pacman -Sc --noconfirm
+
+	# Use 700 for newly create files
+	sed -i 's/022/077/' /etc/profile
 
 fi
