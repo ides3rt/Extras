@@ -147,6 +147,7 @@ if (( Root == Init )); then
 
 	EOF
 
+	# Mount /tmp as tmpfs
 	mount -t tmpfs -o nosuid,nodev,noatime,size=6G,mode=1777 tmpfs /tmp
 
 	# Copy installer script to Chroot
@@ -183,7 +184,7 @@ else
 	echo "$Hostname" > /etc/hostname
 	unset -v Hostname
 
-	# Networking
+	# Set up localhost
 	while read; do
 		printf '%s\n' "$REPLY"
 	done <<-EOF >> /etc/hosts
@@ -191,8 +192,11 @@ else
 		127.0.0.1 localhost
 		::1 localhost
 	EOF
+
+	# Start networking services
 	systemctl enable systemd-networkd systemd-resolved
 
+	# Set up dhcp
 	while read; do
 		printf '%s\n' "$REPLY"
 	done <<-EOF > /etc/systemd/network/20-dhcp.network
@@ -214,8 +218,10 @@ else
 		UseDNS=false
 	EOF
 
+	# Get /boot device source
 	Disk=$(findmnt -o SOURCE --noheadings /boot)
 
+	# Detect if it nvme or sata device
 	if [[ $Disk == *nvme* ]]; then
 		Modules='nvme nvme_core'
 		Disk="${Disk/p*/}"
@@ -225,6 +231,7 @@ else
 		Disk="${Disk/[1-9]*/}"
 	fi
 
+	# Remove fallback preset
 	while read; do
 		printf '%s\n' "$REPLY"
 	done <<-EOF > /etc/mkinitcpio.d/linux-hardened.preset
@@ -241,6 +248,7 @@ else
 		fallback_options="-S autodetect"
 	EOF
 
+	# Set up initramfs cfg
 	while read; do
 		printf '%s\n' "$REPLY"
 	done <<-EOF > /etc/mkinitcpio.conf
@@ -252,6 +260,7 @@ else
 		COMPRESSION_OPTIONS=(-12 --favor-decSpeed)
 	EOF
 
+	# Remove fallback img
 	rm -f /boot/initramfs-linux-hardened-fallback.img
 
 	AddsPkgs=(
@@ -305,7 +314,7 @@ else
 	echo "$CryptNm UUID=$System none plain,cipher=aes-xts-plain64,discard,hash=sha512,size=512" > /etc/crypttab.initramfs
 	unset -v CPU CryptNm Disk P Modules System Mapper Kernel
 
-	# Select GPU
+	# Select a GPU
 	PS3='Select your GPU [1-3]: '
 	select GPU in xf86-video-amdgpu xf86-video-intel nvidia-dkms; do
 		[[ -n $GPU ]] && break
@@ -424,7 +433,7 @@ else
 	chmod 640 /etc/{doas.conf,fstab}
 	chown :doas /etc/doas.conf; chown :fstab /etc/fstab
 
-	# Enable logging for apparmor, and enable caching
+	# Enable logging for Apparmor, and enable caching
 	groupadd -r audit
 	sed -i '/log_group/s/root/audit/' /etc/audit/auditd.conf
 	sed -i '/write-cache/s/#//' /etc/apparmor/parser.conf
@@ -440,7 +449,7 @@ else
 	Groups+=',video,render,lp,kvm,input,audio,wheel'
 	pacman -Q realtime-privileges &>/dev/null && Groups+=',realtime'
 
-	# Create user
+	# Create a user
 	while :; do
 		read -p 'Your username: ' Username
 		useradd -mG "$Groups" "$Username" && break
@@ -455,7 +464,7 @@ else
 	File=/tmp/"${URL##*/}"
 
 	# Download my keymap
-	curl -o "$File"; bash "$File"
+	curl -o "$File" "$URL"; bash "$File"
 	rm -rf /grammak; unset -v URL File
 
 	# My keymap

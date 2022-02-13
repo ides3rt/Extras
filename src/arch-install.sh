@@ -23,11 +23,14 @@ read Init _ <<< "$(ls -di /proc/1/root/.)"
 
 if (( Root == Init )); then
 
-	# Load my keymap
+	# My keymap link
 	URL=https://raw.githubusercontent.com/ides3rt/grammak/master/src/grammak-iso.map
-	curl -O "$URL"; gzip "${URL##*/}"
-	loadkeys "${URL##*/}".gz 2>/dev/null
-	unset -v URL
+	File="${URL##*/}"
+
+	# Set my keymap
+	curl -O "$URL"; gzip "$File"
+	loadkeys "$File".gz 2>/dev/null
+	rm -f "$File".gz; unset -v URL File
 
 	# Partition, format, and mount the drive
 	PS3='Select your disk: '
@@ -124,16 +127,16 @@ if (( Root == Init )); then
 
 	EOF
 
+	# Mount /tmp as tmpfs
+	mount -t tmpfs -o nosuid,nodev,noatime,size=6G,mode=1777 tmpfs /tmp
+
 	# Copy installer script to Chroot
-	cp ./"$0" /mnt
-	arch-chroot /mnt bash "${0##*/}"
+	cp "$0" /mnt/tmp
+	arch-chroot /mnt bash /tmp/"${0##*/}"
 
-	# Remove /etc/resolv.conf as it's required for some programs
-	# to work correctly with systemd-networkd
+	# Remove /etc/resolv.conf as it's required for some
+	# programs to work correctly with systemd-resolved
 	rm -f /mnt/etc/resolv.conf
-
-	# Remove temp files
-	rm -rf /mnt/{grammak,"${0##*/}",installer.sh,zram-setup.sh}
 
 	# Unmount the partitions
 	umount -R /mnt
@@ -161,7 +164,7 @@ else
 	echo "$Hostname" > /etc/hostname
 	unset -v Hostname
 
-	# Networking
+	# Set up localhost
 	while read; do
 		printf '%s\n' "$REPLY"
 	done <<-EOF >> /etc/hosts
@@ -169,8 +172,11 @@ else
 		127.0.0.1 localhost
 		::1 localhost
 	EOF
+
+	# Start networking services
 	systemctl enable systemd-networkd systemd-resolved
 
+	# Set up dhcp
 	while read; do
 		printf '%s\n' "$REPLY"
 	done <<-EOF > /etc/systemd/network/20-dhcp.network
@@ -192,8 +198,10 @@ else
 		UseDNS=false
 	EOF
 
+	# Get /boot device source
 	Disk=$(findmnt -o SOURCE --noheadings /boot)
 
+	# Detect if it nvme or sata device
 	if [[ $Disk == *nvme* ]]; then
 		Modules='nvme nvme_core'
 		Disk="${Disk/p*/}"
@@ -203,6 +211,7 @@ else
 		Disk="${Disk/[1-9]*/}"
 	fi
 
+	# Remove fallback preset
 	while read; do
 		printf '%s\n' "$REPLY"
 	done <<-EOF > /etc/mkinitcpio.d/linux-hardened.preset
@@ -219,6 +228,7 @@ else
 		fallback_options="-S autodetect"
 	EOF
 
+	# Set up initramfs cfg
 	while read; do
 		printf '%s\n' "$REPLY"
 	done <<-EOF > /etc/mkinitcpio.conf
@@ -230,6 +240,7 @@ else
 		COMPRESSION_OPTIONS=(-12 --favor-decSpeed)
 	EOF
 
+	# Remove fallback img
 	rm -f /boot/initramfs-linux-hardened-fallback.img
 
 	AddsPkgs=(
@@ -286,7 +297,7 @@ else
 	cryptsetup -v luksAddKey "$Disk$P"2 /etc/cryptsetup-keys.d/"$CryptNm".key
 	unset -v CPU Disk P Modules System Mapper Kernel
 
-	# Select GPU
+	# Select a GPU
 	PS3='Select your GPU [1-3]: '
 	select GPU in xf86-video-amdgpu xf86-video-intel nvidia-dkms; do
 		[[ -n $GPU ]] && break
@@ -361,10 +372,13 @@ else
 
 	unset OptsPkgs OptsDeps
 
-	# Install Zram
+	# Install Zram script
 	URL=https://raw.githubusercontent.com/ides3rt/extras/master/src/zram-setup.sh
-	curl -O "$URL"; bash "${URL##*/}"
-	unset -v URL
+	File=/tmp/"${URL##*/}"
+
+	# Install Zram
+	curl -o "$File" "$URL"; bash "$File"
+	unset -v URL File
 
 	# Symlink DASH to SH
 	ln -sfT dash /bin/sh
@@ -402,7 +416,7 @@ else
 	chmod 640 /etc/{doas.conf,fstab}
 	chown :doas /etc/doas.conf; chown :fstab /etc/fstab
 
-	# Enable logging for apparmor, and enable caching
+	# Enable logging for Apparmor, and enable caching
 	groupadd -r audit
 	sed -i '/log_group/s/root/audit/' /etc/audit/auditd.conf
 	sed -i '/write-cache/s/#//' /etc/apparmor/parser.conf
@@ -418,7 +432,7 @@ else
 	Groups+=',video,render,lp,kvm,input,audio,wheel'
 	pacman -Q realtime-privileges &>/dev/null && Groups+=',realtime'
 
-	# Create user
+	# Create a user
 	while :; do
 		read -p 'Your username: ' Username
 		useradd -mG "$Groups" "$Username" && break
@@ -428,10 +442,13 @@ else
 	while :; do passwd "$Username" && break; done
 	unset -v Groups Username GPU
 
-	# Download my keymaps
+	# My keymap script
 	URL=https://raw.githubusercontent.com/ides3rt/grammak/master/installer.sh
-	curl -O "$URL"; bash "${URL##*/}"
-	unset -v URL
+	File=/tmp/"${URL##*/}"
+
+	# Download my keymap
+	curl -o "$File" "$URL"; bash "$File"
+	rm -rf /grammak; unset -v URL File
 
 	# My keymap
 	File=/etc/vconsole.conf
