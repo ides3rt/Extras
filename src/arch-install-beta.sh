@@ -65,7 +65,7 @@ if (( Root == Init )); then
 
 		done
 
-		cryptsetup --hash=sha512 --cipher=aes-xts-plain64 --key-file=/tmp/"$CryptNm".key --key-size=512 --allow-discards open --type=plain "$Disk$P"2 "$CryptNm"
+		cryptsetup --hash=sha512 --cipher=aes-xts-plain64 --key-file=/tmp/"$CryptNm".key --key-size=512 open --type=plain "$Disk$P"2 "$CryptNm"
 
 		Mapper=/dev/mapper/"$CryptNm"
 		mkfs.btrfs -f -L Arch "$Mapper"
@@ -97,7 +97,7 @@ if (( Root == Init )); then
 		btrfs su set-default /mnt/@/.snapshots/0/snapshot
 
 		umount /mnt
-		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async "$Mapper" /mnt
+		mount -o noatime,compress-force=zstd:1,space_cache=v2 "$Mapper" /mnt
 
 		mkdir -p /mnt/{.snapshots,boot,home,opt,root,srv,usr/local,var/cache,var/local,var/log,var/opt,var/spool,var/tmp}
 		chmod 700 /mnt/boot
@@ -106,20 +106,20 @@ if (( Root == Init )); then
 		chmod 700 /mnt/var/lib/{machines,portables}
 
 		mount -o nosuid,nodev,noexec,noatime,fmask=0177,dmask=0077 "$Disk$P"1 /mnt/boot
-		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/home "$Mapper" /mnt/home
-		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/opt "$Mapper" /mnt/opt
-		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/root "$Mapper" /mnt/root
-		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/srv "$Mapper" /mnt/srv
-		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/usr/local "$Mapper" /mnt/usr/local
-		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/var/cache "$Mapper" /mnt/var/cache
-		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/var/lib/flatpak "$Mapper" /mnt/var/lib/flatpak
-		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/var/lib/libvirt/images "$Mapper" /mnt/var/lib/libvirt/images
-		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/var/local "$Mapper" /mnt/var/local
-		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/var/log "$Mapper" /mnt/var/log
-		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/var/opt "$Mapper" /mnt/var/opt
-		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/var/spool "$Mapper" /mnt/var/spool
-		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/var/tmp "$Mapper" /mnt/var/tmp
-		mount -o noatime,compress-force=zstd:1,space_cache=v2,discard=async,subvol=@/.snapshots "$Mapper" /mnt/.snapshots
+		mount -o noatime,compress-force=zstd:1,space_cache=v2,subvol=@/home "$Mapper" /mnt/home
+		mount -o noatime,compress-force=zstd:1,space_cache=v2,subvol=@/opt "$Mapper" /mnt/opt
+		mount -o noatime,compress-force=zstd:1,space_cache=v2,subvol=@/root "$Mapper" /mnt/root
+		mount -o noatime,compress-force=zstd:1,space_cache=v2,subvol=@/srv "$Mapper" /mnt/srv
+		mount -o noatime,compress-force=zstd:1,space_cache=v2,subvol=@/usr/local "$Mapper" /mnt/usr/local
+		mount -o noatime,compress-force=zstd:1,space_cache=v2,subvol=@/var/cache "$Mapper" /mnt/var/cache
+		mount -o noatime,compress-force=zstd:1,space_cache=v2,subvol=@/var/lib/flatpak "$Mapper" /mnt/var/lib/flatpak
+		mount -o noatime,compress-force=zstd:1,space_cache=v2,subvol=@/var/lib/libvirt/images "$Mapper" /mnt/var/lib/libvirt/images
+		mount -o noatime,compress-force=zstd:1,space_cache=v2,subvol=@/var/local "$Mapper" /mnt/var/local
+		mount -o noatime,compress-force=zstd:1,space_cache=v2,subvol=@/var/log "$Mapper" /mnt/var/log
+		mount -o noatime,compress-force=zstd:1,space_cache=v2,subvol=@/var/opt "$Mapper" /mnt/var/opt
+		mount -o noatime,compress-force=zstd:1,space_cache=v2,subvol=@/var/spool "$Mapper" /mnt/var/spool
+		mount -o noatime,compress-force=zstd:1,space_cache=v2,subvol=@/var/tmp "$Mapper" /mnt/var/tmp
+		mount -o noatime,compress-force=zstd:1,space_cache=v2,subvol=@/.snapshots "$Mapper" /mnt/.snapshots
 
 		unset -v Disk P Mapper
 		break
@@ -311,7 +311,7 @@ else
 	chmod 600 /etc/cryptsetup-keys.d/"$CryptNm".key
 
 	# Add keyfile
-	echo "$CryptNm UUID=$System none plain,cipher=aes-xts-plain64,discard,hash=sha512,size=512" > /etc/crypttab.initramfs
+	echo "$CryptNm UUID=$System none plain,cipher=aes-xts-plain64,hash=sha512,size=512" > /etc/crypttab.initramfs
 	unset -v CPU CryptNm Disk P Modules System Mapper Kernel
 
 	# Select a GPU
