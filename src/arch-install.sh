@@ -12,6 +12,9 @@ case "$VendorID" in
 esac
 unset -v VendorID
 
+# Encryption name
+CryptNm=encrypt
+
 sed -i '/RemoteFileSigLevel/s/#//' /etc/pacman.conf
 sed -i "s/#ParallelDownloads = 5/ParallelDownloads = $(( $(nproc) + 1 ))/" /etc/pacman.conf
 
@@ -39,9 +42,9 @@ if (( Root == Init )); then
 		mkfs.fat -F 32 -n ESP "$Disk$P"1
 
 		cryptsetup -h sha512 luksFormat "$Disk$P"2
-		cryptsetup open "$Disk$P"2 luks2 || exit 1
+		cryptsetup open "$Disk$P"2 "$CryptNm" || exit 1
 
-		Mapper=/dev/mapper/luks2
+		Mapper=/dev/mapper/"$CryptNm"
 		mkfs.btrfs -f -L Arch "$Mapper"
 
 		mount "$Mapper" /mnt
@@ -134,7 +137,7 @@ if (( Root == Init )); then
 
 	# Unmount the partitions
 	umount -R /mnt
-	cryptsetup close luks2
+	cryptsetup close "$CryptNm"
 
 else
 
@@ -221,7 +224,7 @@ else
 	done <<-EOF > /etc/mkinitcpio.conf
 		MODULES=($Modules btrfs)
 		BINARIES=()
-		FILES=(/etc/cryptsetup-keys.d/luks2.key)
+		FILES=(/etc/cryptsetup-keys.d/$CryptNm.key)
 		HOOKS=(systemd autodetect modconf keyboard sd-vconsole sd-encrypt)
 		COMPRESSION="lz4"
 		COMPRESSION_OPTIONS=(-12 --favor-decSpeed)
@@ -251,13 +254,13 @@ else
 	Mapper=$(findmnt -o UUID --noheadings /)
 
 	# Options for LUKS
-	Kernel="rd.luks.name=$System=luks2 rd.luks.options=discard"
+	Kernel="rd.luks.name=$System=$CryptNm rd.luks.options=discard"
 
 	# Specify the rootfs
-	Kernel+=" root=UUID=$Mapper"
+	Kernel+=" root=UUID=$Mapper ro"
 
 	# Specify the initrd files
-	Kernel+=" ro initrd=\\$CPU-ucode.img initrd=\\initramfs-linux-hardened.img"
+	Kernel+=" initrd=\\$CPU-ucode.img initrd=\\initramfs-linux-hardened.img"
 
 	# Speed improvement
 	Kernel+=' quiet libahci.ignore_sss=1 zswap.enabled=0'
@@ -276,11 +279,11 @@ else
 	chmod 700 /etc/cryptsetup-keys.d
 
 	# Create keyfile to auto-mount LUKS device
-	dd bs=512 count=4 if=/dev/urandom of=/etc/cryptsetup-keys.d/luks2.key iflag=fullblock &>/dev/null
-	chmod 600 /etc/cryptsetup-keys.d/luks2.key
+	dd bs=512 count=4 if=/dev/urandom of=/etc/cryptsetup-keys.d/"$CryptNm".key iflag=fullblock &>/dev/null
+	chmod 600 /etc/cryptsetup-keys.d/"$CryptNm".key
 
 	# Add keyfile
-	cryptsetup -v luksAddKey "$Disk$P"2 /etc/cryptsetup-keys.d/luks2.key
+	cryptsetup -v luksAddKey "$Disk$P"2 /etc/cryptsetup-keys.d/"$CryptNm".key
 	unset -v CPU Disk P Modules System Mapper Kernel
 
 	# Select GPU
