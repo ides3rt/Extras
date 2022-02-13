@@ -13,7 +13,7 @@ esac
 unset -v VendorID
 
 # Encryption name
-CryptNm=encrypt
+CryptNm=luks0
 
 sed -i '/RemoteFileSigLevel/s/#//' /etc/pacman.conf
 sed -i "s/#ParallelDownloads = 5/ParallelDownloads = $(( $(nproc) + 1 ))/" /etc/pacman.conf
