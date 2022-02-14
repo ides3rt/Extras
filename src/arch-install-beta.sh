@@ -56,7 +56,7 @@ if (( Root == Init )); then
 			printf '\n'
 
 			if [[ $Passwd == $RetypePasswd ]]; then
-				echo "$Passwd" > /tmp/"$CryptNm".key
+				printf '%s' "$Passwd" > /tmp/"$CryptNm".key
 				unset -v Passwd RetypePasswd
 				break
 			fi
