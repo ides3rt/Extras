@@ -291,7 +291,7 @@ else
 
 	# Create keyfile to auto-mount LUKS device
 	dd bs=512 count=4 if=/dev/urandom of=/etc/cryptsetup-keys.d/"$CryptNm".key iflag=fullblock &>/dev/null
-	chmod 600 /etc/cryptsetup-keys.d/"$CryptNm".key
+	chmod 400 /etc/cryptsetup-keys.d/"$CryptNm".key
 
 	# Add keyfile
 	cryptsetup -v luksAddKey "$Disk$P"2 /etc/cryptsetup-keys.d/"$CryptNm".key

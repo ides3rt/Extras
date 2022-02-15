@@ -52,6 +52,8 @@ if (( Root == Init )); then
 			read -sp 'Your encryption password: ' Passwd
 			printf '\n'
 
+			[[ -z $Passwd ]] && continue
+
 			read -sp 'Retype password again: ' RetypePasswd
 			printf '\n'
 
@@ -308,10 +310,11 @@ else
 
 	# Create keyfile to auto-mount LUKS device
 	mv /tmp/"$CryptNm".key /etc/cryptsetup-keys.d
-	chmod 600 /etc/cryptsetup-keys.d/"$CryptNm".key
+	chmod 400 /etc/cryptsetup-keys.d/"$CryptNm".key
 
 	# Add keyfile
 	echo "$CryptNm UUID=$System none plain,cipher=aes-xts-plain64,hash=sha512,size=512" > /etc/crypttab.initramfs
+	chmod 600 /etc/crypttab.initramfs
 	unset -v CPU CryptNm Disk P Modules System Mapper Kernel
 
 	# Select a GPU
