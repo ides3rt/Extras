@@ -127,12 +127,12 @@ if (( Root == Init )); then
 
 	EOF
 
-	# Mount /tmp as tmpfs
-	mount -t tmpfs -o nosuid,nodev,noatime,size=6G,mode=1777 tmpfs /tmp
+	# Mount /mnt as tmpfs
+	mount -t tmpfs -o nosuid,nodev,noatime,size=6G,mode=1777 tmpfs /mnt/mnt
 
 	# Copy installer script to Chroot
-	cp "$0" /mnt/tmp
-	arch-chroot /mnt bash /tmp/"${0##*/}"
+	cp "$0" /mnt/mnt
+	arch-chroot /mnt bash /mnt/"${0##*/}"
 
 	# Remove /etc/resolv.conf as it's required for some
 	# programs to work correctly with systemd-resolved
