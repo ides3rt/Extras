@@ -55,7 +55,10 @@ if (( Root == Init )); then
 
 		btrfs su cr /mnt/@/home
 		btrfs su cr /mnt/@/opt
+
 		btrfs su cr /mnt/@/root
+		chmod 700 /mnt/@/root
+
 		btrfs su cr /mnt/@/srv
 
 		mkdir /mnt/@/usr
@@ -69,7 +72,9 @@ if (( Root == Init )); then
 		btrfs su cr /mnt/@/var/log
 		btrfs su cr /mnt/@/var/opt
 		btrfs su cr /mnt/@/var/spool
+
 		btrfs su cr /mnt/@/var/tmp
+		chmod 1777 /mnt/@/var/tmp
 
 		btrfs su cr /mnt/@/.snapshots
 		mkdir /mnt/@/.snapshots/0
@@ -80,7 +85,7 @@ if (( Root == Init )); then
 		mount -o noatime,compress-force=zstd:1,space_cache=v2 "$Mapper" /mnt
 
 		mkdir -p /mnt/{.snapshots,boot,home,opt,root,srv,usr/local,var/cache,var/local,var/log,var/opt,var/spool,var/tmp}
-		chmod 700 /mnt/boot
+		chmod 700 /mnt/{boot,root}
 
 		mkdir -p /mnt/var/lib/{flatpak,libvirt/images,machines,portables}
 		chmod 700 /mnt/var/lib/{machines,portables}
