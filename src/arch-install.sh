@@ -190,11 +190,12 @@ else
 
 		[Network]
 		DHCP=yes
-		IPv6AcceptRA=true
-		DNSOverTLS=yes
 		DNSSEC=yes
-		DNS=45.90.28.0#3579e8.dns1.nextdns.io
+		DNSOverTLS=yes
+		IPv6PrivacyExtensions=true
+		IPv6AcceptRA=true
 		DNS=2a07:a8c0::#3579e8.dns1.nextdns.io
+		DNS=45.90.28.0#3579e8.dns1.nextdns.io
 
 		[DHCP]
 		UseDNS=false
