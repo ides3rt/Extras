@@ -65,15 +65,22 @@ if (( Root == Init )); then
 		btrfs su cr /mnt/@/usr/local
 
 		mkdir -p /mnt/@/var/lib/libvirt
+
 		btrfs su cr /mnt/@/var/cache
+		chattr +C /mnt/@/var/cache
+
 		btrfs su cr /mnt/@/var/lib/flatpak
+
 		btrfs su cr /mnt/@/var/lib/libvirt/images
+		chattr +C /mnt/@/var/lib/libvirt/images
+
 		btrfs su cr /mnt/@/var/local
 		btrfs su cr /mnt/@/var/log
 		btrfs su cr /mnt/@/var/opt
 		btrfs su cr /mnt/@/var/spool
 
 		btrfs su cr /mnt/@/var/tmp
+		chattr +C /mnt/@/var/tmp
 		chmod 1777 /mnt/@/var/tmp
 
 		btrfs su cr /mnt/@/.snapshots
@@ -298,6 +305,7 @@ else
 	# Create keyfile to auto-mount LUKS device
 	dd bs=512 count=4 if=/dev/urandom of=/etc/cryptsetup-keys.d/"$CryptNm".key iflag=fullblock &>/dev/null
 	chmod 400 /etc/cryptsetup-keys.d/"$CryptNm".key
+	chattr +i /etc/cryptsetup-keys.d/"$CryptNm".key
 
 	# Add keyfile
 	cryptsetup -v luksAddKey "$Disk$P"2 /etc/cryptsetup-keys.d/"$CryptNm".key
@@ -418,7 +426,7 @@ else
 
 	# Change 'doas.conf' and 'fstab' permissions
 	groupadd -r doas; groupadd -r fstab
-	echo 'permit :doas' > /etc/doas.conf
+	echo 'permit persist :doas' > /etc/doas.conf
 	chmod 640 /etc/{doas.conf,fstab}
 	chown :doas /etc/doas.conf; chown :fstab /etc/fstab
 
