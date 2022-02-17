@@ -319,6 +319,7 @@ else
 
 	OptsPkgs=(
 		git wget rsync # Downloading tools
+		virt-manager # Virtual machine
 		htop # System monitor
 		tmux # Terminal multiplexer
 		zip unzip # Additional compression algorithms
@@ -347,10 +348,17 @@ else
 		maim xdotool # Screenshot tools
 		perl-image-exiftool # Image's metadata tools
 		firefox-developer-edition links # Browsers
+		libreoffice # Office programs
+		gimp # Image editor
+		zathura # PDF viewer
 		mpv # Media player
+		neofetch cowsay cmatrix figlet sl fortune-mod lolcat doge # Useless staff
 	)
 
 	OptsDeps=(
+		qemu ebtables dnsmasq # Optional deps for libvirtd(8)
+		edk2-ovmf # EFI support in Archiso
+		lsof starce # Better htop(1)
 		dialog # Interactive-menu in wiki-search(1)
 		bash-completion # Better completion in Bash
 		memcached # Cache support in Rust
@@ -370,11 +378,14 @@ else
 
 	if (( $? == 0 )); then
 		# Install optional deps
-		pacman -S --asdeps --noconfirm "${OptsDeps[@]}"
+		yes | pacman -S --asdeps "${OptsDeps[@]}"
 
 		# Enable services
+		systemctl enable libvirtd.socket
 		systemctl --global enable pipewire-pulse
-		sed -i '/encryption/s/luks1/luks2/' /etc/udisks2/udisks2.conf
+
+		# Enable nVidia service
+		[[ "$GPU" == nvidia-dkms ]] && systemctl enable nvidia-persistenced
 
 		# Flatpak
 		flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
@@ -385,6 +396,9 @@ else
 		ln -sf /usr/share/fontconfig/conf.avail/10-hinting-slight.conf /etc/fonts/conf.d
 		ln -sf /usr/share/fontconfig/conf.avail/10-sub-pixel-rgb.conf /etc/fonts/conf.d
 		ln -sf /usr/share/fontconfig/conf.avail/11-lcdfilter-default.conf /etc/fonts/conf.d
+
+		# Use LUKS2 in udisks(8)
+		sed -i '/encryption/s/luks1/luks2/' /etc/udisks2/udisks2.conf
 	fi
 
 	unset OptsPkgs OptsDeps
@@ -447,6 +461,9 @@ else
 	# Define groups
 	Groups='proc,games,dbus,scanner,audit,fstab,doas,users'
 	Groups+=',video,render,lp,kvm,input,audio,wheel'
+
+	# Addition groups
+	pacman -Q libvirt &>/dev/null && Groups+=',libvirt'
 	pacman -Q realtime-privileges &>/dev/null && Groups+=',realtime'
 
 	# Create a user
