@@ -325,6 +325,8 @@ else
 		pigz p7zip pbzip2 # Faster compression
 		rustup sccache # Rust development
 		bc # Linux kernel make deps
+		arch-audit # Security checks in Arch Linux pkgs
+		arch-wiki-lite # Arch Wiki
 		archiso # Create Arch iso
 		udisks2 # Mount drive via polkit(8)
 		exfatprogs # ExFat support
@@ -349,6 +351,7 @@ else
 	)
 
 	OptsDeps=(
+		dialog # Interactive-menu in wiki-search(1)
 		bash-completion # Better completion in Bash
 		memcached # Cache support in Rust
 		libnotify # Send notification
