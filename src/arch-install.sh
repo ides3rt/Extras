@@ -345,6 +345,7 @@ else
 		dunst # Nofication daemon
 		picom # Compositer
 		feh # Wallpaper/Image viewer
+		sxiv # Image viewer
 		maim xdotool # Screenshot tools
 		perl-image-exiftool # Image's metadata tools
 		firefox-developer-edition links # Browsers
