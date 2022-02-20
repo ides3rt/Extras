@@ -272,6 +272,9 @@ else
 		man-pages # Linux manuals
 		dash # Faster sh(1)
 		dbus-broker # Better dbus(1)
+		jitterentropy # Additional entropy source
+		macchanger # MAC address spoof
+		tlp cpupower # Power-saving tools
 	)
 
 	# Install additional packages
@@ -279,7 +282,7 @@ else
 	unset AddsPkgs
 
 	# Find rootfs UUID
-	System=$(lsblk -o UUID --noheadings "$Disk$P"2 | tail -n 1)
+	System=$(lsblk -o UUID --noheadings --nodeps "$Disk$P"2)
 	Mapper=$(findmnt -o UUID --noheadings /)
 
 	# Options for LUKS
@@ -291,8 +294,11 @@ else
 	# Specify the initrd files
 	Kernel+=" initrd=\\$CPU-ucode.img initrd=\\initramfs-linux-hardened.img"
 
+	# Quiet
+	Kernel+=' quiet loglevel=0'
+
 	# Speed improvement
-	Kernel+=' quiet libahci.ignore_sss=1 zswap.enabled=0'
+	Kernel+=' libahci.ignore_sss=1 zswap.enabled=0'
 
 	# Enable apparmor
 	Kernel+=' lsm=landlock,lockdown,yama,apparmor,bpf'
@@ -420,6 +426,13 @@ else
 	bash "$File"
 	unset -v URL File
 
+	# Force BAT mode on TLP
+	sed -i 's/#TLP_DEFAULT_MODE=AC/TLP_DEFAULT_MODE=BAT/' /etc/tlp.conf
+	sed -i 's/#TLP_PERSISTENT_DEFAULT=0/TLP_PERSISTENT_DEFAULT=1/' /etc/tlp.conf
+
+	# Enable powersave mode
+	sed -i "s/#governor='ondemand'/governor='powersave'/" /etc/default/cpupower
+
 	# Symlink BASH to RBASH
 	ln -sfT bash /bin/rbash
 
@@ -444,12 +457,6 @@ else
 		Exec = /usr/bin/ln -sfT dash /bin/sh
 	EOF
 
-	# Enable services
-	ufw enable
-	systemctl disable dbus
-	systemctl enable dbus-broker ufw apparmor auditd
-	systemctl --global enable dbus-broker
-
 	# Allow systemd-logind to see /proc
 	mkdir /etc/systemd/system/systemd-logind.service.d
 	while read; do
@@ -458,6 +465,40 @@ else
 		[Service]
 		SupplementaryGroups=proc
 	EOF
+
+	# Enable services
+	ufw enable
+	systemctl disable dbus
+	systemctl enable dbus-broker ufw apparmor auditd tlp cpupower
+	systemctl --global enable dbus-broker
+
+	# Create MAC address randomizer service
+	while read; do
+		printf '%s\n' "$REPLY"
+	done <<-EOF > /etc/systemd/system/macspoof@.service
+		[Unit]
+		Description=macchanger on %I
+		Wants=network-pre.target
+		Before=network-pre.target
+		BindsTo=sys-subsystem-net-devices-%i.device
+		After=sys-subsystem-net-devices-%i.device
+
+		[Service]
+		ExecStart=/usr/bin/macchanger -r %I
+		Type=oneshot
+
+		[Install]
+		WantedBy=multi-user.target
+	EOF
+
+	# Detect network interface
+	while IFS=': ' read F1 Ifname _; do
+		[[ $F1 == 2 ]] && break
+	done <<< "$(ip a)"
+
+	# Enable MAC address randomizer service
+	systemctl enable macspoof@"$Ifname"
+	unset -v F1 Ifname
 
 	# Symlink 'bin' to 'sbin'
 	rmdir /usr/local/sbin
@@ -474,11 +515,27 @@ else
 	sed -i '/log_group/s/root/audit/' /etc/audit/auditd.conf
 	sed -i '/write-cache/s/#//' /etc/apparmor/parser.conf
 
-	# Hardended system
+	# Required to be in wheel group for su(1)
 	sed -i '/required/s/#//' /etc/pam.d/su
 	sed -i '/required/s/#//' /etc/pam.d/su-l
+
+	# Additional entropy source
+	echo 'jitterentropy_rng' > /usr/lib/modules-load.d/jitterentropy.conf
+
+	# Disallow null password
 	sed -i 's/ nullok//g' /etc/pam.d/system-auth
+
+	# Disable core dump
 	echo '* hard core 0' >> /etc/security/limits.conf
+	sed -i 's/#Storage=external/Storage=none/' /etc/systemd/coredump.conf
+
+	# Disallow root to login to TTY
+	while read; do
+		printf '%s\n' "$REPLY"
+	done <<-EOF > /etc/securetty
+		# File which lists terminals from which root can log in.
+		# See securetty(5) for details.
+	EOF
 
 	# Define groups
 	Groups='audit,doas,users,lp,wheel'
