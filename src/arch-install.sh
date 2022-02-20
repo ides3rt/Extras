@@ -92,9 +92,14 @@ if (( Root == Init )); then
 		mount -o noatime,compress-force=zstd:1,space_cache=v2 "$Mapper" /mnt
 
 		mkdir -p /mnt/{.snapshots,boot,home,opt,root,srv,usr/local,var/cache,var/local,var/log,var/opt,var/spool,var/tmp}
+
+		chattr +C /mnt/var/cache
+		chattr +C /mnt/var/tmp
+		chmod 1777 /mnt/var/tmp
 		chmod 700 /mnt/{boot,root}
 
 		mkdir -p /mnt/var/lib/{flatpak,libvirt/images,machines,portables}
+		chattr +C /mnt/var/lib/libvirt/images
 		chmod 700 /mnt/var/lib/{machines,portables}
 
 		mount -o nosuid,nodev,noexec,noatime,fmask=0177,dmask=0077 "$Disk$P"1 /mnt/boot
@@ -351,7 +356,7 @@ else
 		firefox-developer-edition links # Browsers
 		libreoffice # Office programs
 		gimp # Image editor
-		zathura # PDF viewer
+		zathura zathura-pdf-mupdf # PDF viewer
 		mpv # Media player
 		neofetch cowsay cmatrix figlet sl fortune-mod lolcat doge # Useless staff
 	)
@@ -359,7 +364,7 @@ else
 	OptsDeps=(
 		qemu ebtables dnsmasq # Optional deps for libvirtd(8)
 		edk2-ovmf # EFI support in Archiso
-		lsof starce # Better htop(1)
+		lsof strace # Better htop(1)
 		dialog # Interactive-menu in wiki-search(1)
 		bash-completion # Better completion in Bash
 		memcached # Cache support in Rust
@@ -372,12 +377,14 @@ else
 	)
 
 	# Install kernel headers for DKMS modules
-	[[ "$GPU" == nvidia-dkms ]] && OptsDeps+=( linux-hardened-headers )
+	[[ $GPU == nvidia-dkms ]] && OptsDeps+=( linux-hardened-headers )
 
 	# Install "optional" packages
 	pacman -S "$GPU" "${OptsPkgs[@]}"
 
 	if (( $? == 0 )); then
+		pacman -Q noto-fonts &>/dev/null && OptsDeps+=( noto-fonts-cjk noto-fonts-emoji )
+
 		# Install optional deps
 		yes | pacman -S --asdeps "${OptsDeps[@]}"
 
@@ -386,7 +393,7 @@ else
 		systemctl --global enable pipewire-pulse
 
 		# Enable nVidia service
-		[[ "$GPU" == nvidia-dkms ]] && systemctl enable nvidia-persistenced
+		[[ $GPU == nvidia-dkms ]] && systemctl enable nvidia-persistenced
 
 		# Flatpak
 		flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
@@ -409,8 +416,12 @@ else
 	File=/tmp/"${URL##*/}"
 
 	# Install Zram
-	curl -o "$File" "$URL"; bash "$File"
+	curl -o "$File" "$URL"
+	bash "$File"
 	unset -v URL File
+
+	# Symlink BASH to RBASH
+	ln -sfT bash /bin/rbash
 
 	# Symlink DASH to SH
 	ln -sfT dash /bin/sh
@@ -439,14 +450,24 @@ else
 	systemctl enable dbus-broker ufw apparmor auditd
 	systemctl --global enable dbus-broker
 
-	# Symlink 'bin' to 'sbin'
-	rmdir /usr/local/sbin; ln -s bin /usr/local/sbin
+	# Allow systemd-logind to see /proc
+	mkdir /etc/systemd/system/systemd-logind.service.d
+	while read; do
+		printf '%s\n' "$REPLY"
+	done <<-EOF > /etc/systemd/system/systemd-logind.service.d/hidepid.conf
+		[Service]
+		SupplementaryGroups=proc
+	EOF
 
-	# Change 'doas.conf' and 'fstab' permissions
-	groupadd -r doas; groupadd -r fstab
+	# Symlink 'bin' to 'sbin'
+	rmdir /usr/local/sbin
+	ln -s bin /usr/local/sbin
+
+	# Change doas.conf(5) permissions
+	groupadd -r doas
 	echo 'permit persist :doas' > /etc/doas.conf
-	chmod 640 /etc/{doas.conf,fstab}
-	chown :doas /etc/doas.conf; chown :fstab /etc/fstab
+	chmod 640 /etc/doas.conf
+	chown :doas /etc/doas.conf
 
 	# Enable logging for Apparmor, and enable caching
 	groupadd -r audit
@@ -460,8 +481,12 @@ else
 	echo '* hard core 0' >> /etc/security/limits.conf
 
 	# Define groups
-	Groups='proc,games,dbus,scanner,audit,fstab,doas,users'
-	Groups+=',video,render,lp,kvm,input,audio,wheel'
+	Groups='audit,doas,users,lp,wheel'
+
+	# Groups that required if systemD doesn't exists
+	if [[ ! -f /lib/systemd/systemd ]]; then
+		Groups+=',scanner,video,kvm,input,audio'
+	fi
 
 	# Addition groups
 	pacman -Q libvirt &>/dev/null && Groups+=',libvirt'
