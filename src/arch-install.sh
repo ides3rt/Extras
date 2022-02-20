@@ -332,6 +332,7 @@ else
 		git wget rsync # Downloading tools
 		virt-manager # Virtual machine
 		htop # System monitor
+		fzf # Command-line fuzzy finder
 		tmux # Terminal multiplexer
 		zip unzip # Additional compression algorithms
 		pigz p7zip pbzip2 # Faster compression
@@ -348,6 +349,7 @@ else
 		pwgen # Password generator
 		xorg-server xorg-xrandr # Xorg
 		xorg-xinit # Display manager
+		xdg-user-dirs # Manage XDG dirs
 		arc-solid-gtk-theme papirus-icon-theme # GTK themes
 		bspwm sxhkd xorg-xsetroot # bspwm(1) essentials
 		rxvt-unicode # Terminal Emulater
