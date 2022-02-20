@@ -297,11 +297,80 @@ else
 	# Quiet
 	Kernel+=' quiet loglevel=0'
 
-	# Speed improvement
-	Kernel+=' libahci.ignore_sss=1 zswap.enabled=0'
-
 	# Enable apparmor
 	Kernel+=' lsm=landlock,lockdown,yama,apparmor,bpf'
+
+	# Enable all mitigations for Spectre 2
+	Kernel+=' spectre_v2=on'
+
+	# Disable Speculative Store Bypass
+	Kernel+=' spec_store_bypass_disable=on'
+
+	# Disable TSX, enable all mitigations for the TSX Async Abort
+	# vulnerability and disable SMT
+	Kernel+=' tsx=off tsx_async_abort=full,nosmt'
+
+	# Enable all mitigations for the MDS vulnerability and disable SMT
+	Kernel+=' mds=full,nosmt'
+
+	# Enable all mitigations for the L1TF vulnerability and disable SMT
+	# and L1D flush runtime control
+	Kernel+=' l1tf=full,force'
+
+	# Force disable SMT
+	Kernel+=' nosmt=force'
+
+	# Mark all huge pages in the EPT as non-executable to mitigate iTLB multihit
+	Kernel+=' kvm.nx_huge_pages=force'
+
+	# Distrust the CPU for initial entropy at boot as it is not possible to
+	# audit, may contain weaknesses or a backdoor
+	Kernel+=' random.trust_cpu=off'
+
+	# Enable IOMMU to prevent DMA attacks
+	Kernel+=' intel_iommu=on amd_iommu=on'
+
+	# Disable the busmaster bit on all PCI bridges during very
+	# early boot to avoid holes in IOMMU.
+	#
+	# Keep in mind that this cmdline cause my system to fails
+	# though it gets recommended by Whonix developers
+	#Kernel+=' efi=disable_early_pci_dma'
+
+	# Disable the merging of slabs of similar sizes
+	Kernel+=' slab_nomerge'
+
+	# Enable sanity checks (F) and redzoning (Z)
+	Kernel+=' slub_debug=FZ'
+
+	# Zero memory at allocation and free time
+	Kernel+=' init_on_alloc=1 init_on_free=1'
+
+	# Makes the kernel panic on uncorrectable errors in ECC memory that an attacker
+	# could exploit
+	Kernel+=' mce=0'
+
+	# Enable Kernel Page Table Isolation
+	#
+	# This cmdline is already get enforce for linux-hardended kernel
+	#Kernel+=' pti=on'
+
+	# Vsyscalls are obsolete, are at fixed addresses and are a target for ROP
+	Kernel+=' vsyscall=none'
+
+	# Enable page allocator freelist randomization
+	#
+	# This cmdline is already get enforce for linux-hardended kernel
+	#Kernel+=' page_alloc.shuffle=1'
+
+	# Gather more entropy during boot
+	Kernel+=' extra_latent_entropy'
+
+	# Restrict access to debugfs
+	Kernel+=' debugfs=off'
+
+	# Speed improvement
+	Kernel+=' libahci.ignore_sss=1 zswap.enabled=0'
 
 	# Install bootloader to UEFI
 	efibootmgr --disk "$Disk" --part 1 --create \
