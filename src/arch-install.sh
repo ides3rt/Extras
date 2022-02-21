@@ -472,6 +472,9 @@ else
 		# Enable nVidia service
 		[[ $GPU == nvidia-dkms ]] && systemctl enable nvidia-persistenced
 
+		# Make X.org run rootless by default
+		echo 'needs_root_rights = no' > /etc/X11/Xwrapper.config
+
 		# Flatpak
 		flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
 		flatpak update
@@ -586,12 +589,17 @@ else
 	sed -i '/log_group/s/root/audit/' /etc/audit/auditd.conf
 	sed -i '/write-cache/s/#//' /etc/apparmor/parser.conf
 
-	# Required to be in wheel group for su(1)
-	sed -i '/required/s/#//' /etc/pam.d/su
-	sed -i '/required/s/#//' /etc/pam.d/su-l
+	# Use the common Machine ID
+	URL=https://raw.githubusercontent.com/Whonix/dist-base-files/master/etc/machine-id
+	curl "$URL" > /etc/machine-id
+	unset -v URL
 
 	# Additional entropy source
 	echo 'jitterentropy_rng' > /usr/lib/modules-load.d/jitterentropy.conf
+
+	# Required to be in wheel group for su(1)
+	sed -i '/required/s/#//' /etc/pam.d/su
+	sed -i '/required/s/#//' /etc/pam.d/su-l
 
 	# Disallow null password
 	sed -i 's/ nullok//g' /etc/pam.d/system-auth
