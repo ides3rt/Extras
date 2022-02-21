@@ -555,7 +555,7 @@ else
 		After=sys-subsystem-net-devices-%i.device
 
 		[Service]
-		ExecStart=/usr/bin/macchanger -r %I
+		ExecStart=/usr/bin/macchanger -e %I
 		Type=oneshot
 
 		[Install]
