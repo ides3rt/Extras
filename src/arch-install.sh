@@ -268,6 +268,7 @@ else
 		opendoas # Privileges elevator
 		ufw # Firewall
 		apparmor # Applications sandbox
+		usbguard # Protect from BadUSB
 		man-db # An interface to system manuals
 		man-pages # Linux manuals
 		dash # Faster sh(1)
@@ -500,9 +501,13 @@ else
 	bash "$File"
 	unset -v URL File
 
+	# Generate USBGuard rules
+	usbguard generate-policy > /etc/usbguard/rules.conf
+
 	# Force BAT mode on TLP
 	sed -i 's/#TLP_DEFAULT_MODE=AC/TLP_DEFAULT_MODE=BAT/' /etc/tlp.conf
 	sed -i 's/#TLP_PERSISTENT_DEFAULT=0/TLP_PERSISTENT_DEFAULT=1/' /etc/tlp.conf
+	sed -i 's/#USB_AUTOSUSPEND=1/USB_AUTOSUSPEND=0/' /etc/tlp.conf
 
 	# Enable powersave mode
 	sed -i "s/#governor='ondemand'/governor='powersave'/" /etc/default/cpupower
@@ -543,7 +548,7 @@ else
 	# Enable services
 	ufw enable
 	systemctl disable dbus
-	systemctl enable dbus-broker ufw apparmor auditd tlp cpupower
+	systemctl enable dbus-broker ufw apparmor auditd usbguard tlp cpupower
 	systemctl --global enable dbus-broker
 
 	# Create MAC address randomizer service
