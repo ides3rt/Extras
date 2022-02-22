@@ -40,7 +40,7 @@ if (( Root == Init )); then
 
 	# Partition, format, and mount the drive
 	PS3='Select your disk: '
-	select Disk in $(lsblk -dno PATH); do
+	select Disk in $(lsblk -dne 7 -o PATH); do
 		[[ -z $Disk ]] && continue
 
 		parted "$Disk" mklabel gpt || exit 1
