@@ -27,10 +27,16 @@ if (( Root == Init )); then
 	URL=https://raw.githubusercontent.com/ides3rt/grammak/master/src/grammak-iso.map
 	File="${URL##*/}"
 
+	# Download my keymap
+	curl -O "$URL"
+	gzip "$File"
+
 	# Set my keymap
-	curl -O "$URL"; gzip "$File"
 	loadkeys "$File".gz 2>/dev/null
-	rm -f "$File".gz; unset -v URL File
+
+	# Remove that file
+	rm -f "$File".gz
+	unset -v URL File
 
 	# Partition, format, and mount the drive
 	PS3='Select your disk: '
@@ -126,11 +132,10 @@ if (( Root == Init )); then
 	pacstrap /mnt base base-devel linux-hardened linux-firmware neovim "$CPU"-ucode
 
 	# Generate FSTAB
-	genfstab -U /mnt > /mnt/etc/fstab
-	sed -i 's/,subvol=\/@\/\.snapshots\/0\/snapshot//' /mnt/etc/fstab
-
-	# Clean up FSTAB
-	sed -i '/^#/d; s/,subvolid=[[:digit:]]*//; s/\/@/@/; s/rw,//; s/,ssd//; s/[[:space:]]/ /g' /mnt/etc/fstab
+	Args='/^#/d; s/[[:space:]]+/ /g; s/rw,//; s/,ssd//; s/,subvolid=[[:digit:]]+//'
+	Args+='; s#/@#@#; s#,subvol=@/\.snapshots/0/snapshot##'
+	genfstab -U /mnt | sed -E "$Args" > /mnt/etc/fstab
+	unset -v Args
 
 	# Optimize FSTAB
 	while read; do
@@ -140,7 +145,7 @@ if (( Root == Init )); then
 
 		tmpfs /dev/shm tmpfs nosuid,nodev,noexec,noatime,size=1G 0 0
 
-		proc /proc proc nosuid,nodev,noexec,gid=proc,hidepid=2 0 0
+		proc /proc procfs nosuid,nodev,noexec,gid=proc,hidepid=2 0 0
 
 	EOF
 
@@ -216,8 +221,8 @@ else
 		UseDNS=false
 	EOF
 
-	# Get /boot device source
-	Disk=$(findmnt -no SOURCE /boot)
+	# Get device source
+	Disk=$(lsblk -nso PATH "$(findmnt -nvo SOURCE /)" | tail -n 1)
 
 	# Detect if it nvme or sata device
 	if [[ $Disk == *nvme* ]]; then
@@ -353,7 +358,7 @@ else
 
 	# Enable Kernel Page Table Isolation
 	#
-	# This cmdline is already get enforce for linux-hardended kernel
+	# This cmd is already get enforce by linux-hardended kernel
 	#Kernel+=' pti=on'
 
 	# Vsyscalls are obsolete, are at fixed addresses and are a target for ROP
@@ -361,7 +366,7 @@ else
 
 	# Enable page allocator freelist randomization
 	#
-	# This cmdline is already get enforce for linux-hardended kernel
+	# This cmd is already get enforce by linux-hardended kernel
 	#Kernel+=' page_alloc.shuffle=1'
 
 	# Gather more entropy during boot
@@ -607,8 +612,7 @@ else
 	echo 'jitterentropy_rng' > /usr/lib/modules-load.d/jitterentropy.conf
 
 	# Required to be in wheel group for su(1)
-	sed -i '/required/s/#//' /etc/pam.d/su
-	sed -i '/required/s/#//' /etc/pam.d/su-l
+	sed -i '/required/s/#//' /etc/pam.d/su{,-l}
 
 	# Disallow null password
 	sed -i 's/ nullok//g' /etc/pam.d/system-auth
@@ -652,13 +656,22 @@ else
 	File=/tmp/"${URL##*/}"
 
 	# Download my keymap
-	curl -o "$File" "$URL"; bash "$File"
-	rm -rf /grammak; unset -v URL File
+	curl -o "$File" "$URL"
+	bash "$File"
+
+	# Remove the temp directory
+	rm -rf /grammak
+	unset -v URL File
 
 	# My keymap
 	File=/etc/vconsole.conf
 	echo 'KEYMAP=grammak-iso' > "$File"
-	pacman -Q terminus-font &>dev/null && echo 'FONT=ter-118b' >> "$File"
+
+	# If Terminus font is installed, then use it
+	if pacman -Q terminus-font &>dev/null; then
+		echo 'FONT=ter-118b' >> "$File"
+	fi
+
 	unset -v File
 
 	# Remove sudo(8)
