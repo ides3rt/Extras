@@ -89,7 +89,7 @@ if (( Root == Init )); then
 		btrfs su set-default /mnt/@/.snapshots/0/snapshot
 
 		umount /mnt
-		mount -o noatime,compress-force=zstd:1,space_cache=v2 "$Mapper" /mnt
+		mount -o nodev,noatime,compress-force=zstd:1,space_cache=v2 "$Mapper" /mnt
 
 		mkdir -p /mnt/{.snapshots,boot,home,opt,root,srv,usr/local,var/cache,var/local,var/log,var/opt,var/spool,var/tmp}
 
@@ -103,20 +103,20 @@ if (( Root == Init )); then
 		chmod 700 /mnt/var/lib/{machines,portables}
 
 		mount -o nosuid,nodev,noexec,noatime,fmask=0177,dmask=0077 "$Disk$P"1 /mnt/boot
-		mount -o noatime,compress-force=zstd:1,space_cache=v2,subvol=@/home "$Mapper" /mnt/home
-		mount -o noatime,compress-force=zstd:1,space_cache=v2,subvol=@/opt "$Mapper" /mnt/opt
-		mount -o noatime,compress-force=zstd:1,space_cache=v2,subvol=@/root "$Mapper" /mnt/root
-		mount -o noatime,compress-force=zstd:1,space_cache=v2,subvol=@/srv "$Mapper" /mnt/srv
-		mount -o noatime,compress-force=zstd:1,space_cache=v2,subvol=@/usr/local "$Mapper" /mnt/usr/local
-		mount -o noatime,compress-force=zstd:1,space_cache=v2,subvol=@/var/cache "$Mapper" /mnt/var/cache
-		mount -o noatime,compress-force=zstd:1,space_cache=v2,subvol=@/var/lib/flatpak "$Mapper" /mnt/var/lib/flatpak
-		mount -o noatime,compress-force=zstd:1,space_cache=v2,subvol=@/var/lib/libvirt/images "$Mapper" /mnt/var/lib/libvirt/images
-		mount -o noatime,compress-force=zstd:1,space_cache=v2,subvol=@/var/local "$Mapper" /mnt/var/local
-		mount -o noatime,compress-force=zstd:1,space_cache=v2,subvol=@/var/log "$Mapper" /mnt/var/log
-		mount -o noatime,compress-force=zstd:1,space_cache=v2,subvol=@/var/opt "$Mapper" /mnt/var/opt
-		mount -o noatime,compress-force=zstd:1,space_cache=v2,subvol=@/var/spool "$Mapper" /mnt/var/spool
-		mount -o noatime,compress-force=zstd:1,space_cache=v2,subvol=@/var/tmp "$Mapper" /mnt/var/tmp
-		mount -o noatime,compress-force=zstd:1,space_cache=v2,subvol=@/.snapshots "$Mapper" /mnt/.snapshots
+		mount -o nodev,noatime,compress-force=zstd:1,space_cache=v2,subvol=@/home "$Mapper" /mnt/home
+		mount -o nodev,noatime,compress-force=zstd:1,space_cache=v2,subvol=@/opt "$Mapper" /mnt/opt
+		mount -o nodev,noatime,compress-force=zstd:1,space_cache=v2,subvol=@/root "$Mapper" /mnt/root
+		mount -o nodev,noatime,compress-force=zstd:1,space_cache=v2,subvol=@/srv "$Mapper" /mnt/srv
+		mount -o nodev,noatime,compress-force=zstd:1,space_cache=v2,subvol=@/usr/local "$Mapper" /mnt/usr/local
+		mount -o nodev,noatime,compress-force=zstd:1,space_cache=v2,subvol=@/var/cache "$Mapper" /mnt/var/cache
+		mount -o nodev,noatime,compress-force=zstd:1,space_cache=v2,subvol=@/var/lib/flatpak "$Mapper" /mnt/var/lib/flatpak
+		mount -o nodev,noatime,compress-force=zstd:1,space_cache=v2,subvol=@/var/lib/libvirt/images "$Mapper" /mnt/var/lib/libvirt/images
+		mount -o nodev,noatime,compress-force=zstd:1,space_cache=v2,subvol=@/var/local "$Mapper" /mnt/var/local
+		mount -o nodev,noatime,compress-force=zstd:1,space_cache=v2,subvol=@/var/log "$Mapper" /mnt/var/log
+		mount -o nodev,noatime,compress-force=zstd:1,space_cache=v2,subvol=@/var/opt "$Mapper" /mnt/var/opt
+		mount -o nodev,noatime,compress-force=zstd:1,space_cache=v2,subvol=@/var/spool "$Mapper" /mnt/var/spool
+		mount -o nodev,noatime,compress-force=zstd:1,space_cache=v2,subvol=@/var/tmp "$Mapper" /mnt/var/tmp
+		mount -o nodev,noatime,compress-force=zstd:1,space_cache=v2,subvol=@/.snapshots "$Mapper" /mnt/.snapshots
 
 		unset -v Disk P Mapper
 		break
@@ -217,7 +217,7 @@ else
 	EOF
 
 	# Get /boot device source
-	Disk=$(findmnt -o SOURCE --noheadings /boot)
+	Disk=$(findmnt -no SOURCE /boot)
 
 	# Detect if it nvme or sata device
 	if [[ $Disk == *nvme* ]]; then
@@ -283,8 +283,8 @@ else
 	unset AddsPkgs
 
 	# Find rootfs UUID
-	System=$(lsblk -o UUID --noheadings --nodeps "$Disk$P"2)
-	Mapper=$(findmnt -o UUID --noheadings /)
+	System=$(lsblk -dno UUID "$Disk$P"2)
+	Mapper=$(findmnt -no UUID /)
 
 	# Options for LUKS
 	Kernel="rd.luks.name=$System=$CryptNm"
@@ -370,6 +370,9 @@ else
 	# Restrict access to debugfs
 	Kernel+=' debugfs=off'
 
+	# Disable Intel P-State
+	Kernel+=' intel_pstate=disable'
+
 	# Speed improvement
 	Kernel+=' libahci.ignore_sss=1 zswap.enabled=0'
 
@@ -434,7 +437,7 @@ else
 		firefox-developer-edition links # Browsers
 		libreoffice # Office programs
 		gimp # Image editor
-		zathura zathura-pdf-mupdf # PDF viewer
+		zathura # Document viewer
 		mpv # Media player
 		neofetch cowsay cmatrix figlet sl fortune-mod lolcat doge # Useless staff
 	)
@@ -452,6 +455,7 @@ else
 		yt-dlp # Stream YT into mpv(1) support
 		aria2 # Faster yt-dlp(1)
 		xclip # X-server clipboard in support nvim(1)
+		zathura-pdf-mupdf # PDF support zathura(1)
 	)
 
 	# Install kernel headers for DKMS modules
@@ -510,7 +514,7 @@ else
 	sed -i 's/#USB_AUTOSUSPEND=1/USB_AUTOSUSPEND=0/' /etc/tlp.conf
 
 	# Enable powersave mode
-	sed -i "s/#governor='ondemand'/governor='powersave'/" /etc/default/cpupower
+	sed -i "s/#governor='ondemand'/governor='schedutil'/" /etc/default/cpupower
 
 	# Symlink BASH to RBASH
 	ln -sfT bash /bin/rbash
