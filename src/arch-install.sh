@@ -2,7 +2,7 @@
 
 # Detect CPU
 while read VendorID; do
-	[[ "$VendorID" == *vendor_id* ]] && break
+	[[ $VendorID == *vendor_id* ]] && break
 done < /proc/cpuinfo
 case "$VendorID" in
 	*AMD*)
@@ -15,8 +15,11 @@ unset -v VendorID
 # Encryption name
 CryptNm=luks0
 
-sed -i '/RemoteFileSigLevel/s/#//' /etc/pacman.conf
-sed -i "s/#ParallelDownloads = 5/ParallelDownloads = $(( $(nproc) + 1 ))/" /etc/pacman.conf
+# Configure pacman.conf(5)
+Args='/RemoteFileSigLevel/s/#//'
+Args+="; s/#ParallelDownloads = 5/ParallelDownloads = $(( $(nproc) + 1 ))/"
+sed -i "$Args" /etc/pacman.conf
+unset -v Args
 
 read Root _ <<< "$(ls -di /)"
 read Init _ <<< "$(ls -di /proc/1/root/.)"
@@ -97,10 +100,10 @@ if (( Root == Init )); then
 		umount /mnt
 		mount -o nodev,noatime,compress-force=zstd:1,space_cache=v2 "$Mapper" /mnt
 
-		mkdir -p /mnt/{.snapshots,boot,home,opt,root,srv,usr/local,var/cache,var/local,var/log,var/opt,var/spool,var/tmp}
+		mkdir -p /mnt/{.snapshots,boot,home,opt,root,srv,usr/local}
+		mkdir -p /mnt/var/{cache,'local',log,opt,spool,tmp}
 
-		chattr +C /mnt/var/cache
-		chattr +C /mnt/var/tmp
+		chattr +C /mnt/var/{cache,tmp}
 		chmod 1777 /mnt/var/tmp
 		chmod 700 /mnt/{boot,root}
 
@@ -134,6 +137,7 @@ if (( Root == Init )); then
 	# Generate FSTAB
 	Args='/^#/d; s/[[:space:]]+/ /g; s/rw,//; s/,ssd//; s/,subvolid=[[:digit:]]+//'
 	Args+='; s#/@#@#; s#,subvol=@/\.snapshots/0/snapshot##'
+	Args+='; s/,codepage=437,iocharset=ascii,shortname=mixed,utf8,errors=remount-ro//'
 	genfstab -U /mnt | sed -E "$Args" > /mnt/etc/fstab
 	unset -v Args
 
@@ -150,11 +154,11 @@ if (( Root == Init )); then
 	EOF
 
 	# Mount /mnt as tmpfs
-	mount -t tmpfs -o nosuid,nodev,noatime,size=6G,mode=1777 tmpfs /mnt/mnt
+	mount -t tmpfs -o nosuid,nodev,noatime,size=6G,mode=1777 tmpfs /mnt/opt
 
 	# Copy installer script to Chroot
-	cp "$0" /mnt/mnt
-	arch-chroot /mnt bash /mnt/"${0##*/}"
+	cp "$0" /mnt/opt
+	arch-chroot /mnt bash /opt/"${0##*/}"
 
 	# Remove /etc/resolv.conf as it's required for some
 	# programs to work correctly with systemd-resolved
@@ -513,12 +517,14 @@ else
 	# Generate USBGuard rules
 	usbguard generate-policy > /etc/usbguard/rules.conf
 
-	# Force BAT mode on TLP
-	sed -i 's/#TLP_DEFAULT_MODE=AC/TLP_DEFAULT_MODE=BAT/' /etc/tlp.conf
-	sed -i 's/#TLP_PERSISTENT_DEFAULT=0/TLP_PERSISTENT_DEFAULT=1/' /etc/tlp.conf
-	sed -i 's/#USB_AUTOSUSPEND=1/USB_AUTOSUSPEND=0/' /etc/tlp.conf
+	# Configure TLP
+	Args='s/#TLP_DEFAULT_MODE=AC/TLP_DEFAULT_MODE=BAT/'
+	Args+='; s/#TLP_PERSISTENT_DEFAULT=0/TLP_PERSISTENT_DEFAULT=1/'
+	Args+='; s/#USB_AUTOSUSPEND=1/USB_AUTOSUSPEND=0/'
+	sed -i "$Args" /etc/tlp.conf
+	unset -v Args
 
-	# Enable powersave mode
+	# Enable 'schedutil' governor
 	sed -i "s/#governor='ondemand'/governor='schedutil'/" /etc/default/cpupower
 
 	# Symlink BASH to RBASH
