@@ -488,7 +488,7 @@ else
 	pacman -S "$GPU" "${OptsPkgs[@]}"
 
 	if (( $? == 0 )); then
-		pacman -Q noto-fonts &>/dev/null && OptsDeps+=( noto-fonts-cjk noto-fonts-emoji )
+		pacman -Q noto-fonts &>/dev/null && OptsDeps+=( noto-fonts-emoji )
 
 		# Install optional deps
 		yes | pacman -S --asdeps "${OptsDeps[@]}"
