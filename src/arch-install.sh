@@ -1,15 +1,20 @@
 #!/usr/bin/env bash
 
+trap 'echo Interrupt signal received; exit' SIGINT
+
 # Detect CPU
 while read VendorID; do
-	[[ $VendorID == *vendor_id* ]] && break
+	if [[ $VendorID == *vendor_id* ]]; then
+		case "$VendorID" in
+			*AMD*)
+				CPU=amd ;;
+
+			*Intel*)
+				CPU=intel ;;
+		esac
+		break
+	fi
 done < /proc/cpuinfo
-case "$VendorID" in
-	*AMD*)
-		CPU=amd ;;
-	*Intel*)
-		CPU=intel ;;
-esac
 unset -v VendorID
 
 # Encryption name
@@ -132,7 +137,7 @@ if (( Root == Init )); then
 	done
 
 	# Install base packages
-	pacstrap /mnt base base-devel linux-hardened linux-firmware neovim "$CPU"-ucode
+	pacstrap /mnt base base-devel linux-hardened linux-hardened-headers linux-firmware neovim "$CPU"-ucode
 
 	# Generate FSTAB
 	Args='/^#/d; s/[[:space:]]+/ /g; s/rw,//; s/,ssd//; s/,subvolid=[[:digit:]]+//'
@@ -395,20 +400,32 @@ else
 	mkdir /etc/cryptsetup-keys.d
 	chmod 700 /etc/cryptsetup-keys.d
 
-	# Create keyfile to auto-mount LUKS device
+	# Create a keyfile to auto-mount LUKS device
 	dd bs=512 count=4 if=/dev/urandom of=/etc/cryptsetup-keys.d/"$CryptNm".key iflag=fullblock &>/dev/null
 	chmod 400 /etc/cryptsetup-keys.d/"$CryptNm".key
 	chattr +i /etc/cryptsetup-keys.d/"$CryptNm".key
 
-	# Add keyfile
+	# Add a keyfile
 	cryptsetup -v luksAddKey "$Disk$P"2 /etc/cryptsetup-keys.d/"$CryptNm".key
 	unset -v CPU Disk P Modules System Mapper Kernel
 
-	# Select a GPU
-	PS3='Select your GPU [1-3]: '
-	select GPU in xf86-video-amdgpu xf86-video-intel nvidia-dkms; do
-		[[ -n $GPU ]] && break
-	done
+	# Detect a GPU driver
+	while read Brand; do
+		if [[ $Brand == *VGA* ]]; then
+			case "$Brand" in
+				*AMD*)
+					GPU=xf86-video-amdgpu ;;
+
+				*Intel*)
+					GPU=xf86-video-intel ;;
+
+				*NVIDIA*)
+					GPU=nvidia-dkms ;;
+			esac
+			break
+		fi
+	done <<< "$(lspci)"
+	unset -v Brand
 
 	OptsPkgs=(
 		git wget rsync # Downloading tools
@@ -467,9 +484,6 @@ else
 		zathura-pdf-mupdf # PDF support zathura(1)
 	)
 
-	# Install kernel headers for DKMS modules
-	[[ $GPU == nvidia-dkms ]] && OptsDeps+=( linux-hardened-headers )
-
 	# Install "optional" packages
 	pacman -S "$GPU" "${OptsPkgs[@]}"
 
@@ -482,9 +496,6 @@ else
 		# Enable services
 		systemctl enable libvirtd.socket
 		systemctl --global enable pipewire-pulse
-
-		# Enable nVidia service
-		[[ $GPU == nvidia-dkms ]] && systemctl enable nvidia-persistenced
 
 		# Make X.org run rootless by default
 		echo 'needs_root_rights = no' > /etc/X11/Xwrapper.config
