@@ -173,11 +173,11 @@ if (( Root == Init )); then
 	pacstrap /mnt base base-devel linux-hardened linux-hardened-headers linux-firmware neovim "$CPU"-ucode
 
 	# Generate FSTAB
-	Args='/^#/d; s/[[:space:]]+/ /g; s/rw,//; s/,ssd//; s/,subvolid=[[:digit:]]+//'
+	Args='/^#/d; s/[[:blank:]]+/ /g; s/rw,//; s/,ssd//; s/,subvolid=[[:digit:]]+//'
 	Args+='; s#/@#@#; s#,subvol=@/\.snapshots/0/snapshot##; /\/boot/s/.$/1/'
 	Args+='; s/,codepage=437,iocharset=ascii,shortname=mixed,utf8,errors=remount-ro//'
 	[[ $BTRFS_Layout == 0 ]] || Args+='; /\/var\/lib\/pacman/d'
-	genfstab -U /mnt | sed -E "$Args" > /mnt/etc/fstab
+	genfstab -U / | sed -E "$Args" | cat -s # > /mnt/etc/fstab
 	unset -v Args
 
 	if [[ $BTRFS_Layout != 0 ]]; then
