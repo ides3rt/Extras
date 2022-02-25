@@ -2,6 +2,9 @@
 
 trap 'echo Interrupt signal received; exit' SIGINT
 
+# 0 = /var not separate, else separate /var
+BTRFS_Layout="${BTRFS_Layout:-1}"
+
 # Detect CPU
 while read VendorID; do
 	if [[ $VendorID == *vendor_id* ]]; then
@@ -78,24 +81,33 @@ if (( Root == Init )); then
 		mkdir /mnt/@/usr
 		btrfs su cr /mnt/@/usr/local
 
-		mkdir -p /mnt/@/var/lib/libvirt
+		if [[ $BTRFS_Layout == 0 ]]; then
 
-		btrfs su cr /mnt/@/var/cache
-		chattr +C /mnt/@/var/cache
+			mkdir -p /mnt/@/var/lib/libvirt
 
-		btrfs su cr /mnt/@/var/lib/flatpak
+			btrfs su cr /mnt/@/var/cache
+			chattr +C /mnt/@/var/cache
 
-		btrfs su cr /mnt/@/var/lib/libvirt/images
-		chattr +C /mnt/@/var/lib/libvirt/images
+			btrfs su cr /mnt/@/var/lib/flatpak
 
-		btrfs su cr /mnt/@/var/local
-		btrfs su cr /mnt/@/var/log
-		btrfs su cr /mnt/@/var/opt
-		btrfs su cr /mnt/@/var/spool
+			btrfs su cr /mnt/@/var/lib/libvirt/images
+			chattr +C /mnt/@/var/lib/libvirt/images
 
-		btrfs su cr /mnt/@/var/tmp
-		chattr +C /mnt/@/var/tmp
-		chmod 1777 /mnt/@/var/tmp
+			btrfs su cr /mnt/@/var/local
+			btrfs su cr /mnt/@/var/log
+			btrfs su cr /mnt/@/var/opt
+			btrfs su cr /mnt/@/var/spool
+
+			btrfs su cr /mnt/@/var/tmp
+			chattr +C /mnt/@/var/tmp
+			chmod 1777 /mnt/@/var/tmp
+
+		else
+
+			btrfs su cr /mnt/@/var
+			chattr +C /mnt/@/var
+
+		fi
 
 		btrfs su cr /mnt/@/.snapshots
 		mkdir /mnt/@/.snapshots/0
@@ -105,16 +117,8 @@ if (( Root == Init )); then
 		umount /mnt
 		mount -o nodev,noatime,compress-force=zstd:1,space_cache=v2 "$Mapper" /mnt
 
-		mkdir -p /mnt/{.snapshots,boot,home,opt,root,srv,usr/local}
-		mkdir -p /mnt/var/{cache,'local',log,opt,spool,tmp}
-
-		chattr +C /mnt/var/{cache,tmp}
-		chmod 1777 /mnt/var/tmp
+		mkdir -p /mnt/{.snapshots,boot,home,opt,root,srv,'usr/local',var}
 		chmod 700 /mnt/{boot,root}
-
-		mkdir -p /mnt/var/lib/{flatpak,libvirt/images,machines,portables}
-		chattr +C /mnt/var/lib/libvirt/images
-		chmod 700 /mnt/var/lib/{machines,portables}
 
 		mount -o nosuid,nodev,noexec,noatime,fmask=0177,dmask=0077 "$Disk$P"1 /mnt/boot
 		mount -o nodev,noatime,compress-force=zstd:1,space_cache=v2,subvol=@/home "$Mapper" /mnt/home
@@ -122,34 +126,69 @@ if (( Root == Init )); then
 		mount -o nodev,noatime,compress-force=zstd:1,space_cache=v2,subvol=@/root "$Mapper" /mnt/root
 		mount -o nodev,noatime,compress-force=zstd:1,space_cache=v2,subvol=@/srv "$Mapper" /mnt/srv
 		mount -o nodev,noatime,compress-force=zstd:1,space_cache=v2,subvol=@/usr/local "$Mapper" /mnt/usr/local
-		mount -o nodev,noatime,compress-force=zstd:1,space_cache=v2,subvol=@/var/cache "$Mapper" /mnt/var/cache
-		mount -o nodev,noatime,compress-force=zstd:1,space_cache=v2,subvol=@/var/lib/flatpak "$Mapper" /mnt/var/lib/flatpak
-		mount -o nodev,noatime,compress-force=zstd:1,space_cache=v2,subvol=@/var/lib/libvirt/images "$Mapper" /mnt/var/lib/libvirt/images
-		mount -o nodev,noatime,compress-force=zstd:1,space_cache=v2,subvol=@/var/local "$Mapper" /mnt/var/local
-		mount -o nodev,noatime,compress-force=zstd:1,space_cache=v2,subvol=@/var/log "$Mapper" /mnt/var/log
-		mount -o nodev,noatime,compress-force=zstd:1,space_cache=v2,subvol=@/var/opt "$Mapper" /mnt/var/opt
-		mount -o nodev,noatime,compress-force=zstd:1,space_cache=v2,subvol=@/var/spool "$Mapper" /mnt/var/spool
-		mount -o nodev,noatime,compress-force=zstd:1,space_cache=v2,subvol=@/var/tmp "$Mapper" /mnt/var/tmp
+
+		if [[ $BTRFS_Layout == 0 ]]; then
+
+			mkdir -p /mnt/var/{cache,'local',log,opt,spool,tmp}
+			chattr +C /mnt/var/{cache,tmp}
+			chmod 1777 /mnt/var/tmp
+
+			mkdir -p /mnt/var/lib/{flatpak,libvirt/images}
+			chattr +C /mnt/var/lib/libvirt/images
+
+			mount -o nodev,noatime,compress-force=zstd:1,space_cache=v2,subvol=@/var/cache "$Mapper" /mnt/var/cache
+			mount -o nodev,noatime,compress-force=zstd:1,space_cache=v2,subvol=@/var/lib/flatpak "$Mapper" /mnt/var/lib/flatpak
+			mount -o nodev,noatime,compress-force=zstd:1,space_cache=v2,subvol=@/var/lib/libvirt/images "$Mapper" /mnt/var/lib/libvirt/images
+			mount -o nodev,noatime,compress-force=zstd:1,space_cache=v2,subvol=@/var/local "$Mapper" /mnt/var/local
+			mount -o nodev,noatime,compress-force=zstd:1,space_cache=v2,subvol=@/var/log "$Mapper" /mnt/var/log
+			mount -o nodev,noatime,compress-force=zstd:1,space_cache=v2,subvol=@/var/opt "$Mapper" /mnt/var/opt
+			mount -o nodev,noatime,compress-force=zstd:1,space_cache=v2,subvol=@/var/spool "$Mapper" /mnt/var/spool
+			mount -o nodev,noatime,compress-force=zstd:1,space_cache=v2,subvol=@/var/tmp "$Mapper" /mnt/var/tmp
+
+		else
+
+			mount -o nodev,noatime,compress-force=zstd:1,space_cache=v2,subvol=@/var "$Mapper" /mnt/var
+			chattr +C /mnt/var
+
+			mkdir -p /mnt/state/var
+			chattr +C /mnt/state/var
+			mkdir -p /mnt/state/var/lib/pacman
+
+			mkdir -p /mnt/var/lib/pacman
+			mount --bind /mnt/state/var/lib/pacman /mnt/var/lib/pacman
+
+		fi
+
 		mount -o nodev,noatime,compress-force=zstd:1,space_cache=v2,subvol=@/.snapshots "$Mapper" /mnt/.snapshots
 
 		unset -v Disk P Mapper
 		break
 	done
 
+	# Create dummy directories, so systemd dosen't make random subvol
+	mkdir -p /mnt/var/lib/{machines,portables}
+	chmod 700 /mnt/var/lib/{machines,portables}
+
 	# Install base packages
 	pacstrap /mnt base base-devel linux-hardened linux-hardened-headers linux-firmware neovim "$CPU"-ucode
 
 	# Generate FSTAB
 	Args='/^#/d; s/[[:space:]]+/ /g; s/rw,//; s/,ssd//; s/,subvolid=[[:digit:]]+//'
-	Args+='; s#/@#@#; s#,subvol=@/\.snapshots/0/snapshot##'
+	Args+='; s#/@#@#; s#,subvol=@/\.snapshots/0/snapshot##; /\/boot/s/.$/1/'
 	Args+='; s/,codepage=437,iocharset=ascii,shortname=mixed,utf8,errors=remount-ro//'
+	[[ $BTRFS_Layout == 0 ]] || Args+='; /\/var\/lib\/pacman/d'
 	genfstab -U /mnt | sed -E "$Args" > /mnt/etc/fstab
 	unset -v Args
+
+	if [[ $BTRFS_Layout != 0 ]]; then
+		echo '/state/var/lib/pacman /var/lib/pacman none bind 0 0' >> /mnt/etc/fstab
+	fi
 
 	# Optimize FSTAB
 	while read; do
 		printf '%s\n' "$REPLY"
 	done <<-EOF >> /mnt/etc/fstab
+
 		tmpfs /tmp tmpfs nosuid,nodev,noatime,size=6G 0 0
 
 		tmpfs /dev/shm tmpfs nosuid,nodev,noexec,noatime,size=1G 0 0
