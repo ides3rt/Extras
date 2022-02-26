@@ -98,6 +98,7 @@ if (( Root == Init )); then
 		mount -o nodev,noatime,compress-force=zstd:1,space_cache=v2 "$Mapper" /mnt
 
 		mkdir -p /mnt/{.snapshots,boot,home,opt,root,srv,'usr/local',var}
+		chattr +C /mnt/{boot,var}
 		chmod 700 /mnt/{boot,root}
 
 		mount -o nosuid,nodev,noexec,noatime,fmask=0177,dmask=0077 "$Disk$P"1 /mnt/boot
@@ -111,9 +112,8 @@ if (( Root == Init )); then
 
 		mkdir -p /mnt/state/var
 		chattr +C /mnt/state/var
-		mkdir -p /mnt/state/var/lib/pacman
 
-		mkdir -p /mnt/var/lib/pacman
+		mkdir -p /mnt/{,state/}var/lib/pacman
 		mount --bind /mnt/state/var/lib/pacman /mnt/var/lib/pacman
 
 		unset -v Disk P Mapper
@@ -132,7 +132,7 @@ if (( Root == Init )); then
 	Args+='; s#/@#@#; s#,subvol=@/\.snapshots/0/snapshot##; /\/boot/s/.$/1/'
 	Args+='; s/,codepage=437,iocharset=ascii,shortname=mixed,utf8,errors=remount-ro//'
 	Args+='; /\/var\/lib\/pacman/d'
-	genfstab -U / | sed -E "$Args" | cat -s # > /mnt/etc/fstab
+	genfstab -U /mnt | sed -E "$Args" | cat -s > /mnt/etc/fstab
 	unset -v Args
 
 	# Make FSTAB handle bind mount properly
@@ -677,10 +677,11 @@ else
 
 		# Download my keymap
 		curl -o "$File" "$URL"
-		bash "$File"
+		cd /tmp; bash "$File"
 
 		# Remove the temp directory
-		rm -rf /grammak
+		cd "$OLDPWD"
+		rm -rf /tmp/grammak
 		unset -v URL File
 
 		echo 'KEYMAP=grammak-iso' > "$VConsole"
