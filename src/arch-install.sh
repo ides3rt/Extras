@@ -63,7 +63,10 @@ if (( Root == Init )); then
 		[[ $Disk == *nvme* ]] && P=p
 		mkfs.fat -F 32 -n ESP "$Disk$P"1
 
-		cryptsetup -h sha512 luksFormat "$Disk$P"2
+		while :; do
+			cryptsetup -h sha512 luksFormat "$Disk$P"2 && break
+		done
+
 		cryptsetup open "$Disk$P"2 "$CryptNm" || exit 1
 
 		Mapper=/dev/mapper/"$CryptNm"
@@ -638,6 +641,9 @@ else
 		# File which lists terminals from which root can log in.
 		# See securetty(5) for details.
 	EOF
+
+	# Lock root account
+	passwd -l root
 
 	# Define groups
 	Groups='audit,doas,users,lp,wheel'
