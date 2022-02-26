@@ -1,4 +1,4 @@
-#!/usr/bin/env bash.
+#!/usr/bin/env bash
 
 trap 'echo Interrupt signal received; exit' SIGINT
 
