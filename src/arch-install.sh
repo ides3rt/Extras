@@ -2,7 +2,7 @@
 
 trap 'echo Interrupt signal received; exit' SIGINT
 
-# Use Grammak keymap or not. 1=yes, otherwise no.
+# Use Grammak keymap or not. 1=yes, otherwise no
 Grammak="${Grammak:-1}"
 
 # Detect CPU
@@ -133,7 +133,7 @@ if (( Root == Init )); then
 	Args+='; s/,codepage=437,iocharset=ascii,shortname=mixed,utf8,errors=remount-ro//'
 	Args+='; /\/var\/lib\/pacman/d'
 	genfstab -U /mnt | sed -E "$Args" | cat -s > /mnt/etc/fstab
-	unset -v Args
+	unset -v Args CPU
 
 	# Make FSTAB handle bind mount properly
 	echo '/state/var/lib/pacman /var/lib/pacman none bind 0 0' >> /mnt/etc/fstab
@@ -151,12 +151,24 @@ if (( Root == Init )); then
 
 	EOF
 
-	# Mount /mnt as tmpfs
+	# Mount /mnt/opt as tmpfs
 	mount -t tmpfs -o nosuid,nodev,noatime,size=6G,mode=1777 tmpfs /mnt/opt
 
+	# Detect if "$0" exists or not
+	if [[ -f $0 ]]; then
+		cp "$0" /mnt/opt
+		Exec="${0##*/}"
+	else
+		URL=https://raw.githubusercontent.com/ides3rt/extras/master/src/arch-install.sh
+		Exec="${URL##*/}"
+
+		curl -o /mnt/opt/"$Exec" "$URL"
+		unset -v URL
+	fi
+
 	# Copy installer script to Chroot
-	cp "$0" /mnt/opt
-	arch-chroot /mnt bash /opt/"${0##*/}"
+	arch-chroot /mnt bash /opt/"$Exec"
+	unset -v Exec
 
 	# Remove /etc/resolv.conf as it's required for some
 	# programs to work correctly with systemd-resolved
@@ -226,7 +238,7 @@ else
 	# Get device source
 	Disk=$(lsblk -nso PATH "$(findmnt -nvo SOURCE /)" | tail -n 1)
 
-	# Detect if it nvme or sata device
+	# Detect if it NVMe or SATA device
 	if [[ $Disk == *nvme* ]]; then
 		Modules='nvme nvme_core'
 		Disk="${Disk/p*/}"
@@ -237,9 +249,7 @@ else
 	fi
 
 	# Remove fallback preset
-	while read; do
-		printf '%s\n' "$REPLY"
-	done <<-EOF > /etc/mkinitcpio.d/linux-hardened.preset
+	read -d '' <<-EOF
 		# mkinitcpio preset file for the 'linux-hardened' package
 
 		ALL_config="/etc/mkinitcpio.conf"
@@ -252,11 +262,10 @@ else
 		fallback_image="/boot/initramfs-linux-hardened-fallback.img"
 		fallback_options="-S autodetect"
 	EOF
+	printf '%s' "$REPLY" > /etc/mkinitcpio.d/linux-hardened.preset
 
-	# Set up initramfs cfg
-	while read; do
-		printf '%s\n' "$REPLY"
-	done <<-EOF > /etc/mkinitcpio.conf
+	# Set up initramfs configuration file
+	read -d '' <<-EOF
 		MODULES=($Modules btrfs)
 		BINARIES=()
 		FILES=(/etc/cryptsetup-keys.d/$CryptNm.key)
@@ -264,6 +273,7 @@ else
 		COMPRESSION="lz4"
 		COMPRESSION_OPTIONS=(-12 --favor-decSpeed)
 	EOF
+	printf '%s' "$REPLY" > /etc/mkinitcpio.conf
 
 	# Remove fallback img
 	rm -f /boot/initramfs-linux-hardened-fallback.img
@@ -483,7 +493,7 @@ else
 	if (( $? == 0 )); then
 		pacman -Q noto-fonts &>/dev/null && OptsDeps+=( noto-fonts-emoji )
 
-		# Install optional deps
+		# Install optional dependencies
 		yes | pacman -S --asdeps "${OptsDeps[@]}"
 
 		# Enable services
@@ -518,10 +528,10 @@ else
 	bash "$File"
 	unset -v URL File
 
-	# Generate USBGuard rules
+	# Generate usbguard(1) rules
 	usbguard generate-policy > /etc/usbguard/rules.conf
 
-	# Configure TLP
+	# Configure tlp(1)
 	Args='s/#TLP_DEFAULT_MODE=AC/TLP_DEFAULT_MODE=BAT/'
 	Args+='; s/#TLP_PERSISTENT_DEFAULT=0/TLP_PERSISTENT_DEFAULT=1/'
 	Args+='; s/#USB_AUTOSUSPEND=1/USB_AUTOSUSPEND=0/'
@@ -531,17 +541,15 @@ else
 	# Enable 'schedutil' governor
 	sed -i "s/#governor='ondemand'/governor='schedutil'/" /etc/default/cpupower
 
-	# Symlink BASH to RBASH
+	# Symlink bash(1) to rbash(1)
 	ln -sfT bash /bin/rbash
 
-	# Symlink DASH to SH
+	# Symlink dash(1) to sh(1)
 	ln -sfT dash /bin/sh
 
-	# Make it auto-symlink
+	# Make it auto symlink
 	mkdir /etc/pacman.d/hooks
-	while read; do
-		printf '%s\n' "$REPLY"
-	done <<-EOF > /etc/pacman.d/hooks/50-dash-symlink.hook
+	read -d '' <<-EOF
 		[Trigger]
 		Operation = Install
 		Operation = Upgrade
@@ -554,15 +562,15 @@ else
 		When = PostTransaction
 		Exec = /usr/bin/ln -sfT dash /bin/sh
 	EOF
+	printf '%s' "$REPLY" > /etc/pacman.d/hooks/50-dash-symlink.hook
 
 	# Allow systemd-logind to see /proc
 	mkdir /etc/systemd/system/systemd-logind.service.d
-	while read; do
-		printf '%s\n' "$REPLY"
-	done <<-EOF > /etc/systemd/system/systemd-logind.service.d/hidepid.conf
+	read -d '' <<-EOF
 		[Service]
 		SupplementaryGroups=proc
 	EOF
+	printf '%s' "$REPLY" > /etc/systemd/system/systemd-logind.service.d/hidepid.conf
 
 	# Enable services
 	ufw enable
@@ -571,9 +579,7 @@ else
 	systemctl --global enable dbus-broker
 
 	# Create MAC address randomizer service
-	while read; do
-		printf '%s\n' "$REPLY"
-	done <<-EOF > /etc/systemd/system/macspoof@.service
+	read -d '' <<-EOF
 		[Unit]
 		Description=macchanger on %I
 		Wants=network-pre.target
@@ -588,6 +594,7 @@ else
 		[Install]
 		WantedBy=multi-user.target
 	EOF
+	printf '%s' "$REPLY" > /etc/systemd/system/macspoof@.service
 
 	# Detect network interface
 	while IFS=': ' read F1 Ifname _; do
@@ -635,12 +642,11 @@ else
 	sed -i 's/#Storage=external/Storage=none/' /etc/systemd/coredump.conf
 
 	# Disallow root to login to TTY
-	while read; do
-		printf '%s\n' "$REPLY"
-	done <<-EOF > /etc/securetty
+	read -d '' <<-EOF
 		# File which lists terminals from which root can log in.
 		# See securetty(5) for details.
 	EOF
+	printf '%s' "$REPLY" > /etc/securetty
 
 	# Lock root account
 	passwd -l root
@@ -648,7 +654,7 @@ else
 	# Define groups
 	Groups='audit,doas,users,lp,wheel'
 
-	# Groups that required if systemD doesn't exists
+	# Groups that required if systemd doesn't exists
 	if [[ ! -f /lib/systemd/systemd ]]; then
 		Groups+=',scanner,video,kvm,input,audio'
 	fi
