@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/usr/bin/env bash.
 
 
 Program="${0##*/}"
@@ -8,9 +8,9 @@ Err() {
 	(( $1 > 0 )) && exit $1
 }
 
-((UID)) && Err 1 'Needed to run as root user...'
+((UID)) && Err 1 'needed to run as root user...'
 
-[[ -f /lib/systemd/systemd ]] || Err 1 'Required systemd...'
+[[ -f /lib/systemd/systemd ]] || Err 1 'required systemd...'
 
 read F1 Mem _ < /proc/meminfo
 
@@ -28,12 +28,11 @@ echo "$Udev" > /etc/udev/rules.d/99-zram.rules
 
 echo '/dev/zram0 none swap pri=32767 0 0' >> /etc/fstab
 
-while read; do
-	printf '%s\n' "$REPLY"
-done <<-EOF > /etc/sysctl.d/99-zram.conf
+read -d '' <<-EOF > /etc/sysctl.d/99-zram.conf
 	vm.swappiness = 200
 	vm.vfs_cache_pressure = 200
 	vm.page-cluster = 0
 EOF
+printf '%s' "$REPLY"
 
-printf '%s\n' "$Program: Now, add 'zswap.enabled=0' to your kernel parameter..."
+printf '%s\n' "$Program: now, add 'zswap.enabled=0' to your kernel parameter..."
