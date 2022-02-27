@@ -57,7 +57,7 @@ if (( Root == Init )); then
 		[[ -z $Disk ]] && continue
 
 		parted "$Disk" mklabel gpt || exit 1
-		sgdisk "$Disk" -n=1:0:+1024M -t=1:ef00
+		sgdisk "$Disk" -n=1:0:+512M -t=1:ef00
 		sgdisk "$Disk" -n=2:0:0
 
 		[[ $Disk == *nvme* ]] && P=p
