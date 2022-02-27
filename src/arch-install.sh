@@ -468,7 +468,7 @@ else
 		perl-image-exiftool # Image's metadata tools
 		firefox-developer-edition links # Browsers
 		libreoffice # Office programs
-		gimp # Image editor
+		pinta # Image editor
 		zathura # Document viewer
 		mpv # Media player
 		neofetch cowsay cmatrix figlet sl fortune-mod lolcat doge # Useless staff
