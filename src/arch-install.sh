@@ -113,21 +113,22 @@ if (( Root == Init )); then
 		mkdir -p /mnt/state/var
 		chattr +C /mnt/state/var
 
-		mkdir -p /mnt/{,state/}var/lib/pacman
+		mkdir -p /mnt{,/state}/var/lib/pacman
 		mount --bind /mnt/state/var/lib/pacman /mnt/var/lib/pacman
 
 		unset -v Disk P Mapper
 		break
 	done
 
-	# Create dummy directories, so systemd dosen't make random subvol.
+	# Create dummy directories, so systemd doesn't make random subvol.
 	mkdir -p /mnt/var/lib/{machines,portables}
 	chmod 700 /mnt/var/lib/{machines,portables}
 
 	# Install base packages.
 	pacstrap /mnt base base-devel linux-hardened linux-hardened-headers linux-firmware neovim "$CPU"-ucode
+	chattr +C /mnt/tmp
 
-	# Generate FSTAB.
+	# Generate fstab(5).
 	Args='/^#/d; s/[[:blank:]]+/ /g; s/rw,//; s/,ssd//; s/,subvolid=[[:digit:]]+//'
 	Args+='; s#/@#@#; s#,subvol=@/\.snapshots/0/snapshot##; /\/boot/s/.$/1/'
 	Args+='; s/,codepage=437,iocharset=ascii,shortname=mixed,utf8,errors=remount-ro//'
@@ -135,13 +136,11 @@ if (( Root == Init )); then
 	genfstab -U /mnt | sed -E "$Args" | cat -s > /mnt/etc/fstab
 	unset -v Args CPU
 
-	# Make FSTAB handle bind mount properly.
+	# Make fstab(5) handle bind mount properly.
 	echo '/state/var/lib/pacman /var/lib/pacman none bind 0 0' >> /mnt/etc/fstab
 
-	# Optimize FSTAB.
-	while read; do
-		printf '%s\n' "$REPLY"
-	done <<-EOF >> /mnt/etc/fstab
+	# Optimize fstab(5).
+	read -d '' <<-EOF
 
 		tmpfs /tmp tmpfs nosuid,nodev,noatime,size=6G 0 0
 
@@ -151,10 +150,12 @@ if (( Root == Init )); then
 
 	EOF
 
+	printf '%s' "$REPLY" >> /mnt/etc/fstab
+
 	# Mount /mnt/opt as tmpfs.
 	mount -t tmpfs -o nosuid,nodev,noatime,size=6G,mode=1777 tmpfs /mnt/opt
 
-	# Detect if "$0" exists or not.
+	# Copy installer script to /mnt.
 	if [[ -f $0 ]]; then
 		cp "$0" /mnt/opt
 		Exec="${0##*/}"
@@ -166,15 +167,15 @@ if (( Root == Init )); then
 		unset -v URL
 	fi
 
-	# Copy installer script to Chroot.
+	# Run installer script in chroot.
 	arch-chroot /mnt bash /opt/"$Exec"
 	unset -v Exec
 
-	# Remove /etc/resolv.conf as it's required for some.
+	# Remove /etc/resolv.conf as it's required for some
 	# programs to work correctly with systemd-resolved.
 	rm -f /mnt/etc/resolv.conf
 
-	# Unmount the partitions.
+	# Unmount /mnt.
 	umount -R /mnt
 	cryptsetup close "$CryptNm"
 
@@ -201,21 +202,19 @@ else
 	unset -v Hostname
 
 	# Set up localhost.
-	while read; do
-		printf '%s\n' "$REPLY"
-	done <<-EOF >> /etc/hosts
+	read -d '' <<-EOF
 
 		127.0.0.1 localhost
 		::1 localhost
 	EOF
 
+	printf '%s' "$REPLY" >> /etc/hosts
+
 	# Start networking services.
 	systemctl enable systemd-networkd systemd-resolved
 
 	# Set up dhcp.
-	while read; do
-		printf '%s\n' "$REPLY"
-	done <<-EOF > /etc/systemd/network/20-dhcp.network
+	read -d '' <<-EOF
 		[Match]
 		Name=*
 
@@ -234,6 +233,8 @@ else
 		[IPv6AcceptRA]
 		UseDNS=false
 	EOF
+
+	printf '%s' "$REPLY" > /etc/systemd/network/20-dhcp.network
 
 	# Get device source.
 	Disk=$(lsblk -nso PATH "$(findmnt -nvo SOURCE /)" | tail -n 1)
@@ -262,6 +263,7 @@ else
 		fallback_image="/boot/initramfs-linux-hardened-fallback.img"
 		fallback_options="-S autodetect"
 	EOF
+
 	printf '%s' "$REPLY" > /etc/mkinitcpio.d/linux-hardened.preset
 
 	# Set up initramfs configuration file.
@@ -273,9 +275,10 @@ else
 		COMPRESSION="lz4"
 		COMPRESSION_OPTIONS=(-12 --favor-decSpeed)
 	EOF
+
 	printf '%s' "$REPLY" > /etc/mkinitcpio.conf
 
-	# Remove fallback img.
+	# Remove fallback image.
 	rm -f /boot/initramfs-linux-hardened-fallback.img
 
 	AddsPkgs=(
@@ -324,14 +327,14 @@ else
 	# Disable Speculative Store Bypass.
 	Kernel+=' spec_store_bypass_disable=on'
 
-	# Disable TSX, enable all mitigations for the TSX Async Abort.
+	# Disable TSX, enable all mitigations for the TSX Async Abort
 	# vulnerability and disable SMT.
 	Kernel+=' tsx=off tsx_async_abort=full,nosmt'
 
 	# Enable all mitigations for the MDS vulnerability and disable SMT.
 	Kernel+=' mds=full,nosmt'
 
-	# Enable all mitigations for the L1TF vulnerability and disable SMT.
+	# Enable all mitigations for the L1TF vulnerability and disable SMT
 	# and L1D flush runtime control.
 	Kernel+=' l1tf=full,force'
 
@@ -341,19 +344,19 @@ else
 	# Mark all huge pages in the EPT as non-executable to mitigate iTLB multihit.
 	Kernel+=' kvm.nx_huge_pages=force'
 
-	# Distrust the CPU for initial entropy at boot as it is not possible to.
+	# Distrust the CPU for initial entropy at boot as it is not possible to
 	# audit, may contain weaknesses or a backdoor.
 	Kernel+=' random.trust_cpu=off'
 
 	# Enable IOMMU to prevent DMA attacks.
 	Kernel+=' intel_iommu=on amd_iommu=on'
 
-	# Disable the busmaster bit on all PCI bridges during very.
+	# Disable the busmaster bit on all PCI bridges during very
 	# early boot to avoid holes in IOMMU.
-	#.
-	# Keep in mind that this cmdline cause my system to fails.
+	#
+	# Keep in mind that this cmdline cause my system to fails
 	# though it gets recommended by Whonix developers.
-	#Kernel+=' efi=disable_early_pci_dma'.
+	#Kernel+=' efi=disable_early_pci_dma'
 
 	# Disable the merging of slabs of similar sizes.
 	Kernel+=' slab_nomerge'
@@ -364,22 +367,22 @@ else
 	# Zero memory at allocation and free time.
 	Kernel+=' init_on_alloc=1 init_on_free=1'
 
-	# Makes the kernel panic on uncorrectable errors in ECC memory that an attacker.
+	# Makes the kernel panic on uncorrectable errors in ECC memory that an attacker
 	# could exploit.
 	Kernel+=' mce=0'
 
 	# Enable Kernel Page Table Isolation.
-	#.
+	#
 	# This cmd is already get enforce by linux-hardended kernel.
-	#Kernel+=' pti=on'.
+	#Kernel+=' pti=on'
 
 	# Vsyscalls are obsolete, are at fixed addresses and are a target for ROP.
 	Kernel+=' vsyscall=none'
 
 	# Enable page allocator freelist randomization.
-	#.
+	#
 	# This cmd is already get enforce by linux-hardended kernel.
-	#Kernel+=' page_alloc.shuffle=1'.
+	#Kernel+=' page_alloc.shuffle=1'
 
 	# Gather more entropy during boot.
 	Kernel+=' extra_latent_entropy'
@@ -519,11 +522,11 @@ else
 
 	unset OptsPkgs OptsDeps
 
-	# Install Zram script.
+	# Download ZRam script.
 	URL=https://raw.githubusercontent.com/ides3rt/extras/master/src/zram-setup.sh
 	File=/tmp/"${URL##*/}"
 
-	# Install Zram.
+	# Install ZRam.
 	curl -o "$File" "$URL"
 	bash "$File"
 	unset -v URL File
@@ -547,7 +550,7 @@ else
 	# Symlink dash(1) to sh(1).
 	ln -sfT dash /bin/sh
 
-	# Make it auto symlink.
+	# Make dash(1) auto symlink to sh(1).
 	mkdir /etc/pacman.d/hooks
 	read -d '' <<-EOF
 		[Trigger]
@@ -562,6 +565,7 @@ else
 		When = PostTransaction
 		Exec = /usr/bin/ln -sfT dash /bin/sh
 	EOF
+
 	printf '%s' "$REPLY" > /etc/pacman.d/hooks/50-dash-symlink.hook
 
 	# Allow systemd-logind to see /proc.
@@ -570,6 +574,7 @@ else
 		[Service]
 		SupplementaryGroups=proc
 	EOF
+
 	printf '%s' "$REPLY" > /etc/systemd/system/systemd-logind.service.d/hidepid.conf
 
 	# Enable services.
@@ -594,6 +599,7 @@ else
 		[Install]
 		WantedBy=multi-user.target
 	EOF
+
 	printf '%s' "$REPLY" > /etc/systemd/system/macspoof@.service
 
 	# Detect network interface.
@@ -635,7 +641,7 @@ else
 	sed -i 's/ nullok//g' /etc/pam.d/system-auth
 
 	# Make store password more secure.
-	sed -i '/^password/s/.$/k rounds=65536/' /etc/pam.d/passwd
+	sed -i '/^password/s/$/& rounds=65536/' /etc/pam.d/passwd
 
 	# Disable core dump.
 	echo '* hard core 0' >> /etc/security/limits.conf
@@ -646,6 +652,7 @@ else
 		# File which lists terminals from which root can log in.
 		# See securetty(5) for details.
 	EOF
+
 	printf '%s' "$REPLY" > /etc/securetty
 
 	# Lock root account.
