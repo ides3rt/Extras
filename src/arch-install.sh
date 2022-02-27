@@ -715,6 +715,14 @@ else
 	mkinitcpio -P
 
 	# Use 700 for newly create files.
-	sed -i 's/022/077/' /etc/profile
+	Args='s/022/077/'
+
+	# Clean PATH
+	Args+="; /^append_path '.*'$/d"
+	Args+='; /^# Append our/aPATH=/usr/local/bin:/usr/bin'
+
+	# Set /etc/profile
+	sed -i "$Args" /etc/profile
+	unset -v Args
 
 fi
