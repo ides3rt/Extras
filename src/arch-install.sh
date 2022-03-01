@@ -456,6 +456,7 @@ else
 		xorg-xinit # Display manager
 		xdg-user-dirs # Manage XDG dirs
 		arc-solid-gtk-theme papirus-icon-theme # GTK themes
+		redshift # Eyes saver
 		bspwm sxhkd xorg-xsetroot # bspwm(1) essentials
 		rxvt-unicode # Terminal Emulater
 		rofi # Programs launcher
