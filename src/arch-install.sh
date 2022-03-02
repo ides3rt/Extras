@@ -64,10 +64,10 @@ if (( Root == Init )); then
 		mkfs.fat -F 32 -n ESP "$Disk$P"1
 
 		while :; do
-			cryptsetup -h sha512 luksFormat "$Disk$P"2 && break
+			cryptsetup -v -h sha512 -S 1 -i 5000 luksFormat "$Disk$P"2 && break
 		done
 
-		cryptsetup open "$Disk$P"2 "$CryptNm" || exit 1
+		cryptsetup -v open "$Disk$P"2 "$CryptNm" || exit 1
 
 		Mapper=/dev/mapper/"$CryptNm"
 		mkfs.btrfs -f -L Arch "$Mapper"
@@ -407,12 +407,11 @@ else
 	chmod 700 /etc/cryptsetup-keys.d
 
 	# Create a keyfile to auto-mount LUKS device.
-	dd bs=512 count=4 if=/dev/urandom of=/etc/cryptsetup-keys.d/"$CryptNm".key iflag=fullblock &>/dev/null
+	dd bs=8k count=1 if=/dev/urandom of=/etc/cryptsetup-keys.d/"$CryptNm".key iflag=fullblock &>/dev/null
 	chmod 400 /etc/cryptsetup-keys.d/"$CryptNm".key
-	chattr +i /etc/cryptsetup-keys.d/"$CryptNm".key
 
 	# Add a keyfile.
-	cryptsetup -v luksAddKey "$Disk$P"2 /etc/cryptsetup-keys.d/"$CryptNm".key
+	cryptsetup -v -h sha256 -S 0 -i 1000 luksAddKey "$Disk$P"2 /etc/cryptsetup-keys.d/"$CryptNm".key
 	unset -v CPU Disk P Modules System Mapper Kernel
 
 	# Detect a GPU driver.
