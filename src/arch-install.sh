@@ -5,6 +5,11 @@ trap 'echo Interrupt signal received; exit' SIGINT
 # Use Grammak keymap or not. 1=yes, otherwise no.
 Grammak="${Grammak:-1}"
 
+# Use keyfile or not. 1=yes, otherwise no.
+# Mind you that /boot partition is unencrypted.
+# If keyfile is disable, then auto login will be enable.
+KeyFile="${KeyFile:-0}"
+
 # Detect CPU.
 while read VendorID; do
 	if [[ $VendorID == *vendor_id* ]]; then
@@ -34,7 +39,7 @@ read Init _ <<< "$(ls -di /proc/1/root/.)"
 
 if (( Root == Init )); then
 
-	if [[ $Grammak == 1 ]]; then
+	if (( Grammak == 1 )); then
 		# My keymap link.
 		URL=https://raw.githubusercontent.com/ides3rt/grammak/master/src/grammak-iso.map
 		File="${URL##*/}"
@@ -63,11 +68,35 @@ if (( Root == Init )); then
 		[[ $Disk == *nvme* ]] && P=p
 		mkfs.fat -F 32 -n ESP "$Disk$P"1
 
+		if (( KeyFile == 1 )); then
+			FormatFlags=(
+				-h sha512 # Use SHA-512 instead
+				-S 1 # Add to keyslot 1 instead of slot 0
+				-i 5000 # Use itertime of 5 secs
+			)
+		fi
+
 		while :; do
-			cryptsetup -v -h sha512 -S 1 -i 5000 luksFormat "$Disk$P"2 && break
+			cryptsetup -v "${FormatFlags[@]}" luksFormat "$Disk$P"2 && break
 		done
 
-		cryptsetup -v open "$Disk$P"2 "$CryptNm" || exit 1
+		unset KeyFile FormatFlags
+
+		read Rotation < /sys/block/"${Disk#/dev/}"/queue/rotational
+		if (( Rotation == 0 )); then
+			CryptFlags=(
+				--perf-no_read_workqueue # Disable read queue
+				--perf-no_write_workqueue # Disable write queue
+				--persistent # Make it the default option
+			)
+
+			BootFlags=,discard # Enable 'discard'
+		fi
+
+		unset -v Rotation
+
+		cryptsetup -v "${CryptFlags[@]}" open "$Disk$P"2 "$CryptNm" || exit 1
+		unset CryptFlags
 
 		Mapper=/dev/mapper/"$CryptNm"
 		mkfs.btrfs -f -L Arch "$Mapper"
@@ -101,7 +130,7 @@ if (( Root == Init )); then
 		chattr +C /mnt/{boot,var}
 		chmod 700 /mnt/{boot,root}
 
-		mount -o nosuid,nodev,noexec,noatime,fmask=0177,dmask=0077 "$Disk$P"1 /mnt/boot
+		mount -o nosuid,nodev,noexec,noatime,fmask=0177,dmask=0077"$BootFlags" "$Disk$P"1 /mnt/boot
 		mount -o nodev,noatime,compress-force=zstd:1,space_cache=v2,subvol=@/home "$Mapper" /mnt/home
 		mount -o nodev,noatime,compress-force=zstd:1,space_cache=v2,subvol=@/opt "$Mapper" /mnt/opt
 		mount -o nodev,noatime,compress-force=zstd:1,space_cache=v2,subvol=@/root "$Mapper" /mnt/root
@@ -116,7 +145,7 @@ if (( Root == Init )); then
 		mkdir -p /mnt{,/state}/var/lib/pacman
 		mount --bind /mnt/state/var/lib/pacman /mnt/var/lib/pacman
 
-		unset -v Disk P Mapper
+		unset -v Disk P Mapper BootFlags
 		break
 	done
 
@@ -278,6 +307,8 @@ else
 
 	printf '%s' "$REPLY" > /etc/mkinitcpio.conf
 
+	(( KeyFile != 1 )) && sed -i "/^FILES=/s#/etc/cryptsetup-keys.d/$CryptNm.key##" /etc/mkinitcpio.conf
+
 	# Remove fallback image.
 	rm -f /boot/initramfs-linux-hardened-fallback.img
 
@@ -307,10 +338,11 @@ else
 	Mapper=$(findmnt -no UUID /)
 
 	# Options for LUKS.
-	Kernel="rd.luks.name=$System=$CryptNm"
+	echo "$CryptNm UUID=$System none password-echo=no" > /etc/crypttab.initramfs
+	chmod 600 /etc/crypttab.initramfs
 
 	# Specify the rootfs.
-	Kernel+=" root=UUID=$Mapper ro"
+	Kernel=" root=UUID=$Mapper ro"
 
 	# Specify the initrd files.
 	Kernel+=" initrd=\\$CPU-ucode.img initrd=\\initramfs-linux-hardened.img"
@@ -402,16 +434,21 @@ else
 		--loader '\vmlinuz-linux-hardened' \
 		--unicode "$Kernel"
 
-	# Create directory for keyfile to live in.
-	mkdir /etc/cryptsetup-keys.d
-	chmod 700 /etc/cryptsetup-keys.d
+	if (( KeyFile == 1 )); then
 
-	# Create a keyfile to auto-mount LUKS device.
-	dd bs=8k count=1 if=/dev/urandom of=/etc/cryptsetup-keys.d/"$CryptNm".key iflag=fullblock &>/dev/null
-	chmod 400 /etc/cryptsetup-keys.d/"$CryptNm".key
+		# Create directory for keyfile to live in.
+		mkdir /etc/cryptsetup-keys.d
+		chmod 700 /etc/cryptsetup-keys.d
 
-	# Add a keyfile.
-	cryptsetup -v -h sha256 -S 0 -i 1000 luksAddKey "$Disk$P"2 /etc/cryptsetup-keys.d/"$CryptNm".key
+		# Create a keyfile to auto-mount LUKS device.
+		dd bs=8k count=1 if=/dev/urandom of=/etc/cryptsetup-keys.d/"$CryptNm".key iflag=fullblock &>/dev/null
+		chmod 600 /etc/cryptsetup-keys.d/"$CryptNm".key
+
+		# Add a keyfile.
+		cryptsetup -v -h sha256 -S 0 -i 1000 luksAddKey "$Disk$P"2 /etc/cryptsetup-keys.d/"$CryptNm".key
+
+	fi
+
 	unset -v CPU Disk P Modules System Mapper Kernel
 
 	# Detect a GPU driver.
@@ -676,6 +713,30 @@ else
 		useradd -mG "$Groups" "$Username" && break
 	done
 
+	if (( KeyFile != 1 )); then
+
+		Dir=/etc/systemd/system/getty@tty1.service.d
+		File="$Dir"/autologin.conf
+
+		# Auto login
+		mkdir "$Dir"
+		read -rd '' <<-EOF
+			[Service]
+			ExecStart=
+			ExecStart=-/sbin/agetty -o '-p -f -- \\\\u' --noclear --autologin $Username - \$TERM
+		EOF
+
+		printf '%s' "$REPLY" > "$File"
+
+		if pacman -Q xorg-xinit &>/dev/null; then
+			echo 'Type=simple' >> "$File"
+			echo 'Environment=XDG_SESSION_TYPE=x11' >> "$File"
+		fi
+
+		unset -v Dir File
+
+	fi
+
 	# Set a password.
 	while :; do passwd "$Username" && break; done
 	unset -v Groups Username GPU
@@ -683,7 +744,7 @@ else
 	# Specify vconsole.conf(5).
 	VConsole=/etc/vconsole.conf
 
-	if [[ $Grammak == 1 ]]; then
+	if (( Grammak == 1 )); then
 		# My keymap script.
 		URL=https://raw.githubusercontent.com/ides3rt/grammak/master/installer.sh
 		File=/tmp/"${URL##*/}"
@@ -717,11 +778,11 @@ else
 	# Use 700 for newly create files.
 	Args='s/022/077/'
 
-	# Clean PATH
+	# Clean PATH.
 	Args+="; /^append_path '.*'$/d"
 	Args+='; /^# Append our/aPATH=/usr/local/bin:/usr/bin'
 
-	# Set /etc/profile
+	# Apply to /etc/profile.
 	sed -i "$Args" /etc/profile
 	unset -v Args
 
