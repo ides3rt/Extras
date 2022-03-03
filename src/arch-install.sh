@@ -271,11 +271,10 @@ else
 	# Detect if it NVMe or SATA device.
 	if [[ $Disk == *nvme* ]]; then
 		Modules='nvme nvme_core'
-		Disk="${Disk/p*/}"
-		P=p
+		Disk="${Disk/p*}"; P=p
 	else
 		Modules='ahci sd_mod'
-		Disk="${Disk/[1-9]*/}"
+		Disk="${Disk/[1-9]*}"
 	fi
 
 	# Remove fallback preset.
@@ -305,9 +304,11 @@ else
 		COMPRESSION_OPTIONS=(-12 --favor-decSpeed)
 	EOF
 
-	printf '%s' "$REPLY" > /etc/mkinitcpio.conf
+	if (( KeyFile != 1 )); then
+		REPLY="${REPLY/\/etc\/cryptsetup-keys.d\/$CryptNm.key}"
+	fi
 
-	(( KeyFile != 1 )) && sed -i "/^FILES=/s#/etc/cryptsetup-keys.d/$CryptNm.key##" /etc/mkinitcpio.conf
+	printf '%s' "$REPLY" > /etc/mkinitcpio.conf
 
 	# Remove fallback image.
 	rm -f /boot/initramfs-linux-hardened-fallback.img
@@ -342,7 +343,7 @@ else
 	chmod 600 /etc/crypttab.initramfs
 
 	# Specify the rootfs.
-	Kernel=" root=UUID=$Mapper ro"
+	Kernel="root=UUID=$Mapper ro"
 
 	# Specify the initrd files.
 	Kernel+=" initrd=\\$CPU-ucode.img initrd=\\initramfs-linux-hardened.img"
@@ -557,7 +558,7 @@ else
 		sed -i '/encryption/s/luks1/luks2/' /etc/udisks2/udisks2.conf
 	fi
 
-	unset OptsPkgs OptsDeps
+	unset GPU OptsPkgs OptsDeps
 
 	# Download ZRam script.
 	URL=https://raw.githubusercontent.com/ides3rt/extras/master/src/zram-setup.sh
@@ -696,16 +697,16 @@ else
 	passwd -l root
 
 	# Define groups.
-	Groups='audit,doas,users,lp,wheel'
+	Groups=audit,doas,users,lp,wheel
 
 	# Groups that required if systemd doesn't exists.
 	if [[ ! -f /lib/systemd/systemd ]]; then
-		Groups+=',scanner,video,kvm,input,audio'
+		Groups+=,scanner,video,kvm,input,audio
 	fi
 
 	# Addition groups.
-	pacman -Q libvirt &>/dev/null && Groups+=',libvirt'
-	pacman -Q realtime-privileges &>/dev/null && Groups+=',realtime'
+	pacman -Q libvirt &>/dev/null && Groups+=,libvirt
+	pacman -Q realtime-privileges &>/dev/null && Groups+=,realtime
 
 	# Create a user.
 	while :; do
@@ -739,7 +740,7 @@ else
 
 	# Set a password.
 	while :; do passwd "$Username" && break; done
-	unset -v Groups Username GPU
+	unset -v Groups Username
 
 	# Specify vconsole.conf(5).
 	VConsole=/etc/vconsole.conf
