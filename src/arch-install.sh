@@ -334,7 +334,7 @@ else
 	pacman -S --noconfirm "${AddsPkgs[@]}"
 	unset AddsPkgs
 
-	# Find rootfs UUID.
+	# Find the rootfs UUID.
 	System=$(lsblk -dno UUID "$Disk$P"2)
 	Mapper=$(findmnt -no UUID /)
 
@@ -351,7 +351,7 @@ else
 	# Quiet.
 	Kernel+=' quiet loglevel=0'
 
-	# Enable apparmor.
+	# Enable Apparmor.
 	Kernel+=' lsm=landlock,lockdown,yama,apparmor,bpf'
 
 	# Enable all mitigations for Spectre 2.
@@ -387,8 +387,8 @@ else
 	# Disable the busmaster bit on all PCI bridges during very
 	# early boot to avoid holes in IOMMU.
 	#
-	# Keep in mind that this cmdline cause my system to fails
-	# though it gets recommended by Whonix developers.
+	# Keep in mind that this cmd cause my system to fails.
+	# However, it gets recommended by Whonix developers.
 	#Kernel+=' efi=disable_early_pci_dma'
 
 	# Disable the merging of slabs of similar sizes.
