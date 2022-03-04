@@ -483,7 +483,6 @@ else
 		udisks2 # Mount drive via polkit(8)
 		exfatprogs # ExFat support
 		flatpak # Flatpak
-		pacman-contrib # pacman(8) essentials
 		terminus-font # Better TTY font
 		pwgen # Password generator
 		xorg-server xorg-xrandr # Xorg
