@@ -29,10 +29,7 @@ unset -v VendorID
 CryptNm=luks0
 
 # Configure pacman.conf(5).
-Args='/RemoteFileSigLevel/s/#//'
-Args+="; s/#ParallelDownloads = 5/ParallelDownloads = $(( $(nproc) + 1 ))/"
-sed -i "$Args" /etc/pacman.conf
-unset -v Args
+sed -i "s/#ParallelDownloads = 5/ParallelDownloads = $(( $(nproc) + 1 ))/" /etc/pacman.conf
 
 read Root _ <<< "$(ls -di /)"
 read Init _ <<< "$(ls -di /proc/1/root/.)"
@@ -253,8 +250,8 @@ else
 		DNSOverTLS=yes
 		IPv6PrivacyExtensions=true
 		IPv6AcceptRA=true
-		DNS=2a07:a8c0::#3579e8.dns1.nextdns.io
 		DNS=45.90.28.0#3579e8.dns1.nextdns.io
+		DNS=2a07:a8c0::#3579e8.dns1.nextdns.io
 
 		[DHCP]
 		UseDNS=false
