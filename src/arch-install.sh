@@ -172,6 +172,10 @@ if (( Root == Init )); then
 
 		tmpfs /dev/shm tmpfs nosuid,nodev,noexec,noatime,size=1G 0 0
 
+		tmpfs /run tmpfs nosuid,nodev,noexec,size=1G 0 0
+
+		devtmpfs /dev devtmpfs nosuid,noexec,size=0k 0 0
+
 		proc /proc procfs nosuid,nodev,noexec,gid=proc,hidepid=2 0 0
 
 	EOF
