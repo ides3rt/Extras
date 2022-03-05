@@ -600,28 +600,13 @@ else
 	sed -i "s/#governor='ondemand'/governor='schedutil'/" /etc/default/cpupower
 
 	# Symlink bash(1) to rbash(1).
-	ln -sfT bash /bin/rbash
+	ln -sfT bash /usr/bin/rbash
 
 	# Symlink dash(1) to sh(1).
-	ln -sfT dash /bin/sh
+	ln -sfT dash /usr/bin/sh
 
-	# Make dash(1) auto symlink to sh(1).
-	mkdir /etc/pacman.d/hooks
-	read -d '' <<-EOF
-		[Trigger]
-		Operation = Install
-		Operation = Upgrade
-		Type = Package
-		Target = bash
-
-		[Action]
-		Depends = dash
-		Description = Symlink dash to /bin/sh...
-		When = PostTransaction
-		Exec = /usr/bin/ln -sfT dash /bin/sh
-	EOF
-
-	printf '%s' "$REPLY" > /etc/pacman.d/hooks/50-dash-symlink.hook
+	# Prevent pacman(8) from messing with /usr/bin/sh
+	sed -i '/^#No/s/#//; s#^No.*#& usr/bin/sh#' /etc/pacman.conf
 
 	# Allow systemd-logind to see /proc.
 	mkdir /etc/systemd/system/systemd-logind.service.d
