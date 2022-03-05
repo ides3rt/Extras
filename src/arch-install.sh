@@ -632,6 +632,9 @@ else
 
 	printf '%s' "$REPLY" > /etc/systemd/system/systemd-logind.service.d/hidepid.conf
 
+	# Limit /proc/user/$UID size to 1 GiB.
+	sed -i 's/#RuntimeDirectorySize=10%/RuntimeDirectorySize=1G/' /etc/systemd/logind.conf
+
 	# Enable services.
 	ufw enable
 	systemctl disable dbus
@@ -641,15 +644,18 @@ else
 	# Create MAC address randomizer service.
 	read -d '' <<-EOF
 		[Unit]
-		Description=macchanger on %I
+		Description=Macchanger on %I
 		Wants=network-pre.target
 		Before=network-pre.target
 		BindsTo=sys-subsystem-net-devices-%i.device
 		After=sys-subsystem-net-devices-%i.device
 
 		[Service]
-		ExecStart=/usr/bin/macchanger -e %I
 		Type=oneshot
+		RemainAfterExit=yes
+		ExecStart=/usr/bin/macchanger -e %I
+		ExecReload=/usr/bin/macchanger -e %I
+		ExecStop=/usr/bin/macchanger -p %I
 
 		[Install]
 		WantedBy=multi-user.target
@@ -666,7 +672,7 @@ else
 	systemctl enable macspoof@"$Ifname"
 	unset -v F1 Ifname
 
-	# Symlink 'bin' to 'sbin'.
+	# Symlink /usr/local/bin to /usr/local/sbin.
 	rmdir /usr/local/sbin
 	ln -s bin /usr/local/sbin
 
@@ -770,9 +776,6 @@ else
 		# Download my keymap.
 		curl -o "$File" "$URL"
 		(cd /tmp; bash "$File")
-
-		# Remove the temp directory.
-		rm -rf /tmp/grammak
 		unset -v URL File
 
 		echo 'KEYMAP=grammak-iso' > "$VConsole"
@@ -792,15 +795,10 @@ else
 	# Create initramfs again -- for mature.
 	mkinitcpio -P
 
-	# Use 700 for newly create files.
-	Args='s/022/077/'
+	# Use 700 for newly create files and clean PATH.
+	sed -i 's/022/077/; /\/sbin/d' /etc/profile
 
 	# Clean PATH.
-	Args+="; /^append_path '.*'$/d"
-	Args+='; /^# Append our/aPATH=/usr/local/bin:/usr/bin'
-
-	# Apply to /etc/profile.
-	sed -i "$Args" /etc/profile
-	unset -v Args
+	sed -i 's#/usr/local/sbin:##' /etc/login.defs
 
 fi
