@@ -87,7 +87,7 @@ if (( Root == Init )); then
 				--persistent # Make it the default option
 			)
 
-			BootFlags=,discard # Enable 'discard'
+			ESPFlags=,discard # Enable 'discard'
 		fi
 
 		unset -v Rotation
@@ -100,6 +100,10 @@ if (( Root == Init )); then
 
 		mount "$Mapper" /mnt
 		btrfs su cr /mnt/@
+
+		btrfs su cr /mnt/@/boot
+		chattr +C /mnt/@/boot
+		chmod 700 /mnt/@/boot
 
 		btrfs su cr /mnt/@/home
 		btrfs su cr /mnt/@/opt
@@ -123,11 +127,12 @@ if (( Root == Init )); then
 		umount /mnt
 		mount -o nodev,noatime,compress-force=zstd:1,space_cache=v2 "$Mapper" /mnt
 
-		mkdir -p /mnt/{.snapshots,boot,home,opt,root,srv,'usr/local',var}
-		chattr +C /mnt/{boot,var}
-		chmod 700 /mnt/{boot,root}
+		mkdir -p /mnt/{.snapshots,boot,efi,home,opt,root,srv,'usr/local',var}
+		chattr +C /mnt/{boot,efi,var}
+		chmod 700 /mnt/{boot,efi,root}
 
-		mount -o nosuid,nodev,noexec,noatime,fmask=0177,dmask=0077"$BootFlags" "$Disk$P"1 /mnt/boot
+		mount -o nosuid,nodev,noexec,noatime,fmask=0177,dmask=0077"$ESPFlags" "$Disk$P"1 /mnt/efi
+		mount -o nodev,noatime,compress-force=zstd:1,space_cache=v2,subvol=@/boot "$Mapper" /mnt/boot
 		mount -o nodev,noatime,compress-force=zstd:1,space_cache=v2,subvol=@/home "$Mapper" /mnt/home
 		mount -o nodev,noatime,compress-force=zstd:1,space_cache=v2,subvol=@/opt "$Mapper" /mnt/opt
 		mount -o nodev,noatime,compress-force=zstd:1,space_cache=v2,subvol=@/root "$Mapper" /mnt/root
@@ -139,10 +144,10 @@ if (( Root == Init )); then
 		mkdir -p /mnt/state/var
 		chattr +C /mnt/state/var
 
-		mkdir -p /mnt{,/state}/var/lib/pacman
+		mkdir -p /mnt/{,state/}var/lib/pacman
 		mount --bind /mnt/state/var/lib/pacman /mnt/var/lib/pacman
 
-		unset -v Disk P Mapper BootFlags
+		unset -v Disk P Mapper ESPFlags
 		break
 	done
 
@@ -156,7 +161,7 @@ if (( Root == Init )); then
 
 	# Generate fstab(5).
 	Args='/^#/d; s/[[:blank:]]+/ /g; s/rw,//; s/,ssd//; s/,subvolid=[[:digit:]]+//'
-	Args+='; s#/@#@#; s#,subvol=@/\.snapshots/0/snapshot##; /\/boot/s/.$/1/'
+	Args+='; s#/@#@#; s#,subvol=@/\.snapshots/0/snapshot##; /\/efi/s/.$/1/'
 	Args+='; s/,codepage=437,iocharset=ascii,shortname=mixed,utf8,errors=remount-ro//'
 	Args+='; /\/var\/lib\/pacman/d'
 	genfstab -U /mnt | sed -E "$Args" | cat -s > /mnt/etc/fstab
@@ -284,12 +289,15 @@ else
 
 		ALL_config="/etc/mkinitcpio.conf"
 		ALL_kver="/boot/vmlinuz-linux-hardened"
+		ALL_microcode=(/boot/*-ucode.img)
 
 		PRESETS=('default')
 
 		default_image="/boot/initramfs-linux-hardened.img"
+		default_efi_image="/efi/EFI/ARCHX64/linux-hardended.efi"
 
 		fallback_image="/boot/initramfs-linux-hardened-fallback.img"
+		fallback_efi_image="/efi/EFI/ARCHX64/linux-hardended-fallback.efi"
 		fallback_options="-S autodetect"
 	EOF
 
@@ -310,6 +318,9 @@ else
 	fi
 
 	printf '%s' "$REPLY" > /etc/mkinitcpio.conf
+
+	# Create directories.
+	mkdir -p /efi/EFI/ARCHX64
 
 	# Remove fallback image.
 	rm -f /boot/initramfs-linux-hardened-fallback.img
@@ -347,7 +358,9 @@ else
 	Kernel="root=UUID=$Mapper ro"
 
 	# Specify the initrd files.
-	Kernel+=" initrd=\\$CPU-ucode.img initrd=\\initramfs-linux-hardened.img"
+	#
+	# Must disable this if mkinitcpio(8) is used.
+	#Kernel+=" initrd=\\$CPU-ucode.img initrd=\\initramfs-linux-hardened.img"
 
 	# Quiet.
 	Kernel+=' quiet loglevel=0'
@@ -427,14 +440,18 @@ else
 	# Disable Intel P-State.
 	Kernel+=' intel_pstate=disable'
 
+	# Disable annoying OEM logo.
+	Kernel+=' bgrt_disable'
+
 	# Speed improvement.
 	Kernel+=' libahci.ignore_sss=1 zswap.enabled=0'
+
+	echo "$Kernel" > /etc/kernel/cmdline
 
 	# Install bootloader to UEFI.
 	efibootmgr --disk "$Disk" --part 1 --create \
 		--label 'Arch Linux' \
-		--loader '\vmlinuz-linux-hardened' \
-		--unicode "$Kernel"
+		--loader '\EFI\ARCHX64\linux-hardended.efi'
 
 	if (( KeyFile == 1 )); then
 
@@ -451,7 +468,7 @@ else
 
 	fi
 
-	unset -v CPU Disk P Modules System Mapper Kernel
+	unset -v CryptNm CPU Disk P Modules System Mapper Kernel
 
 	# Detect a GPU driver.
 	while read Brand; do
@@ -752,10 +769,9 @@ else
 
 		# Download my keymap.
 		curl -o "$File" "$URL"
-		cd /tmp; bash "$File"
+		(cd /tmp; bash "$File")
 
 		# Remove the temp directory.
-		cd "$OLDPWD"
 		rm -rf /tmp/grammak
 		unset -v URL File
 
