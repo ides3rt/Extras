@@ -29,7 +29,9 @@ unset -v VendorID
 CryptNm=luks0
 
 # Configure pacman.conf(5).
-sed -i "s/#ParallelDownloads = 5/ParallelDownloads = $(( $(nproc) + 1 ))/" /etc/pacman.conf
+URL=https://raw.githubusercontent.com/ides3rt/setup/master/src/etc/pacman.conf
+curl -s "$URL" | sed "/ParallelDownloads/s/7/$(( $(nproc) + 1 ))/" > /etc/pacman.conf
+unset -v URL
 
 read Root _ <<< "$(ls -di /)"
 read Init _ <<< "$(ls -di /proc/1/root/.)"
@@ -42,7 +44,7 @@ if (( Root == Init )); then
 		File="${URL##*/}"
 
 		# Download my keymap.
-		curl -O "$URL"
+		curl -sO "$URL"
 		gzip "$File"
 
 		# Set my keymap.
@@ -156,7 +158,7 @@ if (( Root == Init )); then
 	chmod 700 /mnt/var/lib/{machines,portables}
 
 	# Install base packages.
-	pacstrap /mnt base base-devel linux-hardened linux-hardened-headers linux-firmware neovim "$CPU"-ucode
+	pacstrap /mnt base linux-hardened linux-hardened-headers linux-firmware neovim "$CPU"-ucode
 	chattr +C /mnt/tmp
 
 	# Generate fstab(5).
@@ -198,7 +200,7 @@ if (( Root == Init )); then
 		URL=https://raw.githubusercontent.com/ides3rt/extras/master/src/arch-install.sh
 		Exec="${URL##*/}"
 
-		curl -o /mnt/opt/"$Exec" "$URL"
+		curl -so /mnt/opt/"$Exec" "$URL"
 		unset -v URL
 	fi
 
@@ -329,6 +331,8 @@ else
 		btrfs-progs # BTRFS support
 		efibootmgr # UEFI manager
 		dosfstools # Fat and it's derivative support
+		moreutils # Unix tools
+		autoconf automake bc bison fakeroot flex pkgconf # Development tools
 		opendoas # Privileges elevator
 		ufw # Firewall
 		apparmor # Applications sandbox
@@ -497,7 +501,6 @@ else
 		zip unzip # Additional compression algorithms
 		pigz p7zip pbzip2 # Faster compression
 		rustup sccache # Rust development
-		bc # Linux kernel make deps
 		arch-audit # Security checks in Arch Linux pkgs
 		arch-wiki-lite # Arch Wiki
 		archiso # Create Arch iso
@@ -582,7 +585,7 @@ else
 	File=/tmp/"${URL##*/}"
 
 	# Install ZRam.
-	curl -o "$File" "$URL"
+	curl -so "$File" "$URL"
 	bash "$File"
 	unset -v URL File
 
@@ -674,7 +677,7 @@ else
 
 	# Use the common Machine ID.
 	URL=https://raw.githubusercontent.com/Whonix/dist-base-files/master/etc/machine-id
-	curl "$URL" > /etc/machine-id
+	curl -s "$URL" > /etc/machine-id
 	unset -v URL
 
 	# Additional entropy source.
@@ -759,7 +762,7 @@ else
 		File=/tmp/"${URL##*/}"
 
 		# Download my keymap.
-		curl -o "$File" "$URL"
+		curl -so "$File" "$URL"
 		(cd /tmp; bash "$File")
 		unset -v URL File
 
