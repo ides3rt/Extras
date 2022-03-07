@@ -627,7 +627,7 @@ else
 	# Enable services.
 	ufw enable
 	systemctl disable dbus
-	systemctl enable dbus-broker ufw apparmor auditd usbguard tlp cpupower
+	systemctl enable apparmor auditd cpupower cronie dbus-broker tlp ufw usbguard
 	systemctl --global enable dbus-broker
 
 	# Create MAC address randomizer service.
