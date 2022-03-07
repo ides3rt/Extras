@@ -333,6 +333,7 @@ else
 		dosfstools # Fat and it's derivative support
 		moreutils # Unix tools
 		autoconf automake bc bison fakeroot flex pkgconf # Development tools
+		cronie # Cron jobs
 		opendoas # Privileges elevator
 		ufw # Firewall
 		apparmor # Applications sandbox
