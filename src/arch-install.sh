@@ -333,7 +333,7 @@ else
 		dosfstools # Fat and it's derivative support
 		moreutils # Unix tools
 		autoconf automake bc bison fakeroot flex pkgconf # Development tools
-		cronie # Cron jobs
+		fcron # Cron tools
 		opendoas # Privileges elevator
 		ufw # Firewall
 		apparmor # Applications sandbox
@@ -627,7 +627,7 @@ else
 	# Enable services.
 	ufw enable
 	systemctl disable dbus
-	systemctl enable apparmor auditd cpupower cronie dbus-broker tlp ufw usbguard
+	systemctl enable apparmor auditd cpupower dbus-broker fcron tlp ufw usbguard
 	systemctl --global enable dbus-broker
 
 	# Create MAC address randomizer service.
@@ -772,7 +772,7 @@ else
 
 	# If Terminus font is installed, then use it.
 	if pacman -Q terminus-font &>dev/null; then
-		echo 'FONT=ter-118b' >> "$VConsole"
+		echo 'FONT=ter-i18b' >> "$VConsole"
 	fi
 
 	unset -v VConsole
