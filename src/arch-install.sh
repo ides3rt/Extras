@@ -604,13 +604,27 @@ else
 	sed -i "s/#governor='ondemand'/governor='schedutil'/" /etc/default/cpupower
 
 	# Symlink bash(1) to rbash(1).
-	ln -sfT bash /usr/bin/rbash
+	ln -sT bash /usr/bin/rbash
 
 	# Symlink dash(1) to sh(1).
 	ln -sfT dash /usr/bin/sh
 
-	# Prevent pacman(8) from messing with /usr/bin/sh
+	# Prevent pacman(8) from messing with /usr/bin/sh.
 	sed -i '/^#No/s/#//; s#^No.*#& usr/bin/sh#' /etc/pacman.conf
+
+	# Setup /var/tmp.
+	read -d '' <<-EOF
+		# See tmpfiles.d(5) for details.
+
+		# Remove file(s) in /var/tmp older than 1 week.
+		D /var/tmp 1777 root root 1w
+
+		# Exclude namespace mountpoint(s) from removal.
+		x /var/tmp/systemd-private-*
+		X /var/tmp/systemd-private-*/tmp
+	EOF
+
+	printf '%s' "$REPLY" > /etc/tmpfiles.d/tempfs.conf
 
 	# Allow systemd-logind to see /proc.
 	mkdir /etc/systemd/system/systemd-logind.service.d
