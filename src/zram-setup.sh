@@ -7,9 +7,13 @@ Err() {
 	(( $1 > 0 )) && exit $1
 }
 
-((UID)) && Err 1 'needed to run as root user...'
+(( $# > 0 )) && Err 2 "not required argument..."
 
-[[ -f /lib/systemd/systemd ]] || Err 1 'required systemd...'
+((UID)) && Err 2 'needed to run as root user...'
+
+if systemctl status systemd-udevd &>/dev/null; then
+	Err 1 'required systemd(1) and udev(7)...'
+fi
 
 read F1 Mem _ < /proc/meminfo
 
@@ -19,9 +23,9 @@ echo 'zram' > /etc/modules-load.d/zram.conf
 
 echo 'options zram num_devices=1' > /etc/modprobe.d/99-zram.conf
 
-Udev="KERNEL==\"zram0\", ATTR{comp_algorithm}=\"zstd\""
+Udev='KERNEL=="zram0", ATTR{comp_algorithm}="zstd"'
 Udev+=", ATTR{disksize}=\"${Mem}G\""
-Udev+=", RUN=\"/sbin/mkswap /dev/zram0\", TAG+=\"systemd\""
+Udev+=', RUN="/sbin/mkswap /dev/zram0", TAG+="systemd"'
 
 echo "$Udev" > /etc/udev/rules.d/99-zram.rules
 
@@ -32,6 +36,7 @@ read -d '' <<-EOF > /etc/sysctl.d/99-zram.conf
 	vm.vfs_cache_pressure = 200
 	vm.page-cluster = 0
 EOF
+
 printf '%s' "$REPLY"
 
 printf '%s\n' "$Program: now, add 'zswap.enabled=0' to your kernel parameter..."
