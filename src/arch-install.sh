@@ -616,15 +616,22 @@ else
 	read -d '' <<-EOF
 		# See tmpfiles.d(5) for details.
 
+		# Remove file(s) in /tmp on reboot.
+		q /tmp 1777 root root 0
+
+		# Exclude namespace mountpoint(s) from removal.
+		x /tmp/systemd-private-*
+		X /tmp/systemd-private-*/tmp
+
 		# Remove file(s) in /var/tmp older than 1 week.
-		D /var/tmp 1777 root root 1w
+		q /var/tmp 1777 root root 1w
 
 		# Exclude namespace mountpoint(s) from removal.
 		x /var/tmp/systemd-private-*
 		X /var/tmp/systemd-private-*/tmp
 	EOF
 
-	printf '%s' "$REPLY" > /etc/tmpfiles.d/tempfs.conf
+	printf '%s' "$REPLY" > /etc/tmpfiles.d/tmp.conf
 
 	# Allow systemd-logind to see /proc.
 	mkdir /etc/systemd/system/systemd-logind.service.d
@@ -749,17 +756,12 @@ else
 		mkdir "$Dir"
 		read -rd '' <<-EOF
 			[Service]
+			Type=simple
 			ExecStart=
-			ExecStart=-/sbin/agetty -o '-p -f -- \\\\u' --noclear --autologin $Username - \$TERM
+			ExecStart=-/sbin/agetty -o '-p -f -- \\\\u' --autologin $Username - \$TERM
 		EOF
 
 		printf '%s' "$REPLY" > "$File"
-
-		if pacman -Q xorg-xinit &>/dev/null; then
-			echo 'Type=simple' >> "$File"
-			echo 'Environment=XDG_SESSION_TYPE=x11' >> "$File"
-		fi
-
 		unset -v Dir File
 
 	fi
