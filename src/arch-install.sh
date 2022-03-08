@@ -29,9 +29,115 @@ unset -v VendorID
 CryptNm=luks0
 
 # Configure pacman.conf(5).
-URL=https://raw.githubusercontent.com/ides3rt/setup/master/src/etc/pacman.conf
-curl -s "$URL" | sed "/ParallelDownloads/s/7/$(( $(nproc) + 1 ))/" > /etc/pacman.conf
-unset -v URL
+read -d '' <<-EOF
+	#
+	# /etc/pacman.conf
+	#
+	# See the pacman.conf(5) manpage for option and repository directives
+
+	#
+	# GENERAL OPTIONS
+	#
+	[options]
+	# The following paths are commented out with their default values listed.
+	# If you wish to use different paths, uncomment and update the paths.
+	#RootDir     = /
+	#DBPath      = /var/lib/pacman/
+	#CacheDir    = /var/cache/pacman/pkg/
+	#LogFile     = /var/log/pacman.log
+	#GPGDir      = /etc/pacman.d/gnupg/
+	#HookDir     = /etc/pacman.d/hooks/
+	HoldPkg      = pacman glibc
+	#XferCommand = /usr/bin/curl -L -C - -f -o %o %u
+	#XferCommand = /usr/bin/wget --passive-ftp -c -O %o %u
+	#CleanMethod = KeepInstalled
+	Architecture = auto
+
+	# Pacman won't upgrade packages listed in IgnorePkg and members of IgnoreGroup
+	#IgnorePkg   =
+	#IgnoreGroup =
+
+	# Prevent pacman(8) from messing with /usr/bin/sh
+	NoUpgrade = usr/bin/sh
+	NoExtract = usr/bin/sh
+
+	# Remove unneeded locales
+	NoExtract = usr/share/help/* !usr/share/help/C/*
+	NoExtract = usr/share/gtk-doc/html/*
+	NoExtract = usr/share/locale/* usr/share/X11/locale/*/* usr/share/i18n/locales/* opt/google/chrome/locales/* !usr/share/X11/locale/C/*
+	NoExtract = !*locale*/en*/* !usr/share/*locale*/locale.*
+	NoExtract = !usr/share/*locales/en_?? !usr/share/*locales/i18n* !usr/share/*locales/iso*
+	NoExtract = usr/share/i18n/charmaps/* !usr/share/i18n/charmaps/UTF-8.gz
+	NoExtract = !usr/share/*locales/trans*
+	NoExtract = usr/share/man/* !usr/share/man/man*
+	NoExtract = usr/share/vim/vim*/lang/*
+	NoExtract = usr/lib/libreoffice/help/en-US/*
+	NoExtract = usr/share/kbd/locale/*
+	NoExtract = usr/share/*/translations/*.qm usr/share/*/nls/*.qm usr/share/qt/translations/*.pak !*/en-US.pak
+	NoExtract = usr/share/*/locales/*.pak opt/*/locales/*.pak usr/lib/*/locales/*.pak !*/en-US.pak
+	NoExtract = opt/onlyoffice/desktopeditors/dictionaries/* !opt/onlyoffice/desktopeditors/dictionaries/en_US/*
+	NoExtract = opt/onlyoffice/desktopeditors/editors/web-apps/apps/*/main/locale/* !*/en.json
+	NoExtract = opt/onlyoffice/desktopeditors/editors/web-apps/apps/*/main/resources/help/* !*/help/en/*
+	NoExtract = opt/onlyoffice/desktopeditors/converter/empty/*/*
+	NoExtract = usr/share/ibus/dicts/emoji-*.dict !usr/share/ibus/dicts/emoji-en.dict
+
+	# Misc options
+	Color
+	CheckSpace
+	VerbosePkgLists
+	ParallelDownloads = $(( `nproc` + 1 ))
+	ILoveCandy
+
+	# By default, pacman accepts packages signed by keys that its local keyring
+	# trusts (see pacman-key and its man page), as well as unsigned packages.
+	SigLevel    = Required DatabaseOptional
+	LocalFileSigLevel = Optional
+	#RemoteFileSigLevel = Required
+
+	# NOTE: You must run \`pacman-key --init\` before first using pacman; the local
+	# keyring can then be populated with the keys of all official Arch Linux
+	# packagers with \`pacman-key --populate archlinux\`.
+
+	#
+	# REPOSITORIES
+	#   - can be defined here or included from another file
+	#   - pacman will search repositories in the order defined here
+	#   - local/custom mirrors can be added here or in separate files
+	#   - repositories listed first will take precedence when packages
+	#     have identical names, regardless of version number
+	#   - URLs will have \$repo replaced by the name of the current repo
+	#   - URLs will have \$arch replaced by the name of the architecture
+	#
+	# Repository entries are of the format:
+	#       [repo-name]
+	#       Server = ServerName
+	#       Include = IncludePath
+	#
+	# The header [repo-name] is crucial - it must be present and
+	# uncommented to enable the repo.
+	#
+
+	#
+	# Arch Linux
+	#
+
+	[core]
+	Include = /etc/pacman.d/mirrorlist
+
+	[extra]
+	Include = /etc/pacman.d/mirrorlist
+
+	[community]
+	Include = /etc/pacman.d/mirrorlist
+
+	# An example of a custom package repository.  See the pacman manpage for
+	# tips on creating your own repositories.
+	#[custom]
+	#SigLevel = Optional TrustAll
+	#Server = file:///home/custompkgs
+EOF
+
+printf '%s' "$REPLY" > /etc/pacman.conf
 
 read Root _ <<< "$(ls -di /)"
 read Init _ <<< "$(ls -di /proc/1/root/.)"
@@ -48,9 +154,9 @@ if (( Root == Init )); then
 		gzip "$File"
 
 		# Set my keymap.
-		loadkeys "$File".gz 2>/dev/null
+		loadkeys "$File".gz &>/dev/null
 
-		# Remove that file.
+		# Remove the keymap file.
 		rm -f "$File".gz
 		unset -v URL File
 	fi
@@ -82,6 +188,7 @@ if (( Root == Init )); then
 		unset KeyFile FormatFlags
 
 		read Rotation < /sys/block/"${Disk#/dev/}"/queue/rotational
+
 		if (( Rotation == 0 )); then
 			CryptFlags=(
 				--perf-no_read_workqueue # Disable read queue
@@ -153,7 +260,7 @@ if (( Root == Init )); then
 		break
 	done
 
-	# Create dummy directories, so systemd doesn't make random subvol.
+	# Create dummy directories, so systemd(1) doesn't make random subvol.
 	mkdir -p /mnt/var/lib/{machines,portables}
 	chmod 700 /mnt/var/lib/{machines,portables}
 
@@ -210,7 +317,7 @@ if (( Root == Init )); then
 	unset -v Exec
 
 	# Remove /etc/resolv.conf as it's required for some
-	# programs to work correctly with systemd-resolved.
+	# programs to work correctly with systemd-resolved(8).
 	rm -f /mnt/etc/resolv.conf
 
 	# Unmount /mnt.
@@ -461,7 +568,7 @@ else
 	# on rootfs, unless you've a keyfile.
 	(( KeyFile == 1 )) && Kernel+=' vt.global_cursor_default=0'
 
-	# Disable ZSwap as we already enabled ZRam.
+	# Disable zswap as we already enabled zram.
 	Kernel+=' zswap.enabled=0'
 
 	echo "$Kernel" > /etc/kernel/cmdline
@@ -506,22 +613,196 @@ else
 	done <<< "$(lspci)"
 	unset -v Brand
 
-	# Setup /etc/modprobe.d, /etc/sysctl.d, and /etc/udev/rules.d.
-	(
-		cd /etc/modprobe.d
-		BaseURL=https://raw.githubusercontent.com/ides3rt/setup/master/src/etc/modprobe.d
-		curl -sO "$BaseURL"/30-security.conf
-		[[ $GPU == *nvidia* ]] && curl -sO "$BaseURL"/50-nvidia.conf
+	# Setup /etc/modprobe.d
+	Dir=/etc/modprobe.d
 
-		cd /etc/sysctl.d
-		BaseURL=https://github.com/ides3rt/setup/raw/master/src/etc/sysctl.d
-		curl -sO "$BaseURL"/99-sysctl.conf
+	# 30-security.conf
+	read -d '' <<-EOF
+		options nf_conntrack nf_conntrack_helper=0
 
-		cd /etc/udev/rules.d
-		BaseURL=https://raw.githubusercontent.com/ides3rt/setup/master/src/etc/udev/rules.d
-		curl -sO "$BaseURL"/60-ioschedulers.rules
-		[[ $GPU == *nvidia* ]] && curl -sO "$BaseURL"/70-nvidia.rules
-	)
+		install bluetooth /bin/false
+		install btusb /bin/false
+
+		install firewire-core /bin/false
+		install thunderbolt /bin/false
+
+		install msr /bin/false
+
+		install dccp /bin/false
+		install sctp /bin/false
+		install rds /bin/false
+		install tipc /bin/false
+		install n-hdlc /bin/false
+		install ax25 /bin/false
+		install netrom /bin/false
+		install rose /bin/false
+		install decnet /bin/false
+		install econet /bin/false
+		install af_802154 /bin/false
+		install appletalk /bin/false
+		install psnap /bin/false
+		install p8023 /bin/false
+		install p8022 /bin/false
+		install can /bin/false
+		install atm /bin/false
+
+		install cramfs /bin/false
+		install udf /bin/false
+
+		install vivid /bin/false
+	EOF
+
+	printf '%s' "$REPLY" > "$Dir"/30-security.conf
+
+	# 50-nvidia.conf
+	if [[ $GPU == *nvidia* ]]; then
+		read -d '' <<-EOF
+			blacklist i2c_nvidia_gpu
+			options nvidia-drm modeset=1
+			options nvidia NVreg_UsePageAttributeTable=1
+		EOF
+
+		printf '%s' "$REPLY" > "$Dir"/50-nvidia.conf
+	fi
+
+	# Setup /etc/sysctl.d.
+	Dir=/etc/sysctl.d
+
+	# Empty /etc/ufw/sysctl.conf
+	> /etc/ufw/sysctl.conf
+
+	# 99-sysctl.conf
+	read -d '' <<-EOF
+		# Restrict loading TTY line disciplines.
+		dev.tty.ldisc_autoload = 0
+
+		# https://www.kernel.org/doc/html/latest/admin-guide/sysctl/fs.html#protected-fifos
+		fs.protected_fifos = 2
+		fs.protected_hardlinks = 1
+		fs.protected_regular = 2
+		fs.protected_symlinks = 1
+
+		# https://wiki.archlinux.org/title/Sysctl#TCP/IP_stack_hardening
+		net.core.bpf_jit_harden = 2
+		net.ipv4.conf.all.rp_filter = 2
+		net.ipv4.conf.default.rp_filter = 2
+		net.ipv4.tcp_syncookies = 1
+		net.ipv4.tcp_rfc1337 = 1
+
+		# https://wiki.archlinux.org/title/Sysctl#Enable_BBR
+		net.core.default_qdisc = fq_codel
+		net.ipv4.tcp_congestion_control = bbr
+
+		# Disable redirects.
+		net.ipv4.conf.all.accept_redirects = 0
+		net.ipv4.conf.default.accept_redirects = 0
+		net.ipv6.conf.all.accept_redirects = 0
+		net.ipv6.conf.default.accept_redirects = 0
+		net.ipv4.conf.all.secure_redirects = 0
+		net.ipv4.conf.default.secure_redirects = 0
+		net.ipv4.conf.all.send_redirects = 0
+		net.ipv4.conf.default.send_redirects = 0
+
+		# Remove these settings if you're router.
+		net.ipv4.conf.all.accept_source_route = 0
+		net.ipv4.conf.default.accept_source_route = 0
+		net.ipv6.conf.all.accept_source_route = 0
+		net.ipv6.conf.default.accept_source_route = 0
+		net.ipv6.conf.all.router_solicitations = 0
+		net.ipv6.conf.default.router_solicitations = 0
+
+		# Don't log impossible packets.
+		net.ipv4.conf.all.log_martians = 0
+		net.ipv4.conf.default.log_martians = 0
+
+		# Use IPv6 Privacy Extensions.
+		net.ipv6.conf.all.use_tempaddr = 1
+		net.ipv6.conf.default.use_tempaddr = 1
+
+		# Ignore all ICMP. Might remove this if scare of breakages.
+		net.ipv4.icmp_echo_ignore_all = 1
+
+		# Ignore bad ICMP.
+		net.ipv4.icmp_echo_ignore_broadcasts = 1
+		net.ipv4.icmp_ignore_bogus_error_responses = 1
+
+		# https://wiki.archlinux.org/title/Sysctl#Enable_TCP_Fast_Open
+		net.ipv4.tcp_fastopen = 3
+
+		# https://wiki.archlinux.org/title/Sysctl#Change_TCP_keepalive_parameters
+		net.ipv4.tcp_keepalive_intvl = 10
+		net.ipv4.tcp_keepalive_probes = 6
+		net.ipv4.tcp_keepalive_time = 60
+
+		# Disable timestamps.
+		net.ipv4.tcp_timestamps = 0
+
+		# Protect from "simple" DDoS attack.
+		net.ipv4.tcp_fin_timeout = 10
+		net.ipv4.tcp_max_syn_backlog = 8192
+		net.ipv4.tcp_max_tw_buckets = 2048000
+		net.ipv4.tcp_slow_start_after_idle = 0
+		net.ipv4.tcp_tw_reuse = 1
+
+		# Don't accept RA.
+		net.ipv6.conf.all.accept_ra = 0
+		net.ipv6.conf.default.accept_ra = 0
+
+		# Prevent SUID processes from creating Coredumps.
+		kernel.core_pattern = /dev/null
+		fs.suid_dumpable = 0
+
+		# https://wiki.archlinux.org/title/Security#Restricting_access_to_kernel_logs
+		kernel.dmesg_restrict = 1
+		kernel.kexec_load_disabled = 1
+		kernel.kptr_restrict = 2
+		kernel.unprivileged_bpf_disabled = 1
+		kernel.yama.ptrace_scope = 3
+
+		# Prevent kernel info leaks in console during boot.
+		kernel.printk = 3 3 3 3
+
+		# https://www.kernel.org/doc/html/latest/admin-guide/sysrq.html
+		kernel.sysrq = 0
+
+		# Disable (unprivileged) user namespaces.
+		kernel.unprivileged_userns_clone = 0
+		user.max_user_namespaces = 0
+
+		# Improve ASLR effectiveness for Mmap.
+		vm.mmap_rnd_bits = 32
+		vm.mmap_rnd_compat_bits = 16
+
+		# Restrict the userfaultfd() to root only.
+		vm.unprivileged_userfaultfd = 0
+	EOF
+
+	printf '%s' "$REPLY" > "$Dir"/99-sysctl.conf
+
+	# Setup /etc/udev/rules.d.
+	Dir=/etc/udev/rules.d
+
+	# 60-ioschedulers.rules
+	read -d '' <<-EOF
+		# Set scheduler for NVMe.
+		ACTION=="add|change", KERNEL=="nvme[0-9]n[0-9]", ATTR{queue/scheduler}="none"
+
+		# Set scheduler for SSD and eMMC.
+		ACTION=="add|change", KERNEL=="sd[a-z]*|mmcblk[0-9]*", ATTR{queue/rotational}=="0", ATTR{queue/scheduler}="mq-deadline"
+
+		# Set scheduler for rotating disks.
+		ACTION=="add|change", KERNEL=="sd[a-z]*", ATTR{queue/rotational}=="1", ATTR{queue/scheduler}="bfq"
+	EOF
+
+	printf '%s' "$REPLY" > "$Dir"/60-ioschedulers.rules
+
+	# 70-nvidia.rules
+	if [[ $GPU == *nvidia* ]]; then
+		REPLY='ACTION=="add", DEVPATH=="/bus/pci/drivers/nvidia", RUN+="/usr/bin/nvidia-modprobe -c0 -u"'
+		printf '%s\n' > "$Dir"/70-nvidia.rules
+	fi
+
+	unset -v Dir
 
 	OptsPkgs=(
 		git wget rsync # Downloading tools
@@ -611,14 +892,32 @@ else
 
 	unset GPU OptsPkgs OptsDeps Dir
 
-	# Download ZRam script.
-	URL=https://raw.githubusercontent.com/ides3rt/extras/master/src/zram-setup.sh
-	File=/tmp/"${URL##*/}"
+	# Load necessary modules for zram.
+	echo 'zram' > /etc/modules-load.d/zram.conf
+	echo 'options zram num_devices=1' > /etc/modprobe.d/99-zram.conf
 
-	# Install ZRam.
-	curl -so "$File" "$URL"
-	bash "$File"
-	unset -v URL File
+	# Find the amounts of RAM.
+	read F1 Mem _ < /proc/meminfo
+	Mem=$(( ( $Mem / 1024 / 1024 + 1 ) * 2 ))
+
+	# Enable zram via udev(7).
+	Udev='KERNEL=="zram0", ATTR{comp_algorithm}="zstd"'
+	Udev+=", ATTR{disksize}=\"${Mem}G\""
+	Udev+=', RUN="/sbin/mkswap /dev/zram0", TAG+="systemd"'
+
+	# Use zram as a swap.
+	echo "$Udev" > /etc/udev/rules.d/99-zram.rules
+	echo '/dev/zram0 none swap pri=32767 0 0' >> /etc/fstab
+
+	# Tweaks sysctl(8) for better results with zram.
+	read -d '' <<-EOF > /etc/sysctl.d/99-zram.conf
+		vm.swappiness = 200
+		vm.vfs_cache_pressure = 200
+		vm.page-cluster = 0
+	EOF
+
+	printf '%s' "$REPLY"
+	unset -v F1 Mem Udev
 
 	# Generate usbguard(1) rules.
 	usbguard generate-policy > /etc/usbguard/rules.conf
@@ -660,7 +959,7 @@ else
 
 	printf '%s' "$REPLY" > /etc/tmpfiles.d/tmp.conf
 
-	# Allow systemd-logind to see /proc.
+	# Allow systemd-logind(8) to see /proc.
 	mkdir /etc/systemd/system/systemd-logind.service.d
 	read -d '' <<-EOF
 		[Service]
@@ -759,8 +1058,8 @@ else
 	# Define groups.
 	Groups=audit,doas,users,lp,wheel
 
-	# Groups that required if systemd doesn't exists.
-	if [[ ! -f /lib/systemd/systemd ]]; then
+	# Groups that required if systemd(1) doesn't exists.
+	if [[ ! -f /usr/lib/systemd/systemd ]]; then
 		Groups+=,scanner,video,kvm,input,audio
 	fi
 
@@ -802,15 +1101,16 @@ else
 
 	if (( Grammak == 1 )); then
 		# My keymap script.
-		URL=https://raw.githubusercontent.com/ides3rt/grammak/master/installer.sh
-		File=/tmp/"${URL##*/}"
+		URL=https://github.com/ides3rt/grammak
+		Dir=/tmp/"${URL##*/}"
 
 		# Download my keymap.
-		curl -so "$File" "$URL"
-		(cd /tmp; bash "$File")
-		unset -v URL File
+		git clone "$URL" "$Dir"
+		"$Dir"/installer.sh
 
+		# Make it the default.
 		echo 'KEYMAP=grammak-iso' > "$VConsole"
+		unset -v URL Dir
 	fi
 
 	# If Terminus font is installed, then use it.
@@ -827,7 +1127,7 @@ else
 	# Create initramfs again -- for mature.
 	mkinitcpio -P
 
-	# Use 700 for newly create files and clean PATH.
+	# Use 700 for newly create files and clean $PATH.
 	sed -i 's/022/077/; /\/sbin/d' /etc/profile
 
 	# Clean PATH.
