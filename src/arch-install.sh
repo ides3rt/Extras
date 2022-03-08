@@ -448,8 +448,11 @@ else
 	# Disable annoying OEM logo.
 	Kernel+=' bgrt_disable'
 
-	# Speed improvement.
-	Kernel+=' libahci.ignore_sss=1 zswap.enabled=0'
+	# Disable SSS as it meant for enterprise.
+	Kernel+=' libahci.ignore_sss=1'
+
+	# Disable ZSwap as we enabled ZRam already.
+	Kernel+=' zswap.enabled=0'
 
 	echo "$Kernel" > /etc/kernel/cmdline
 
@@ -464,7 +467,7 @@ else
 		mkdir /etc/cryptsetup-keys.d
 		chmod 700 /etc/cryptsetup-keys.d
 
-		# Create a keyfile to auto-mount LUKS device.
+		# Create a keyfile to auto mount LUKS device.
 		dd bs=8k count=1 if=/dev/urandom of=/etc/cryptsetup-keys.d/"$CryptNm".key iflag=fullblock &>/dev/null
 		chmod 600 /etc/cryptsetup-keys.d/"$CryptNm".key
 
