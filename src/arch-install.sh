@@ -919,24 +919,27 @@ else
 	printf '%s' "$REPLY"
 	unset -v F1 Mem Udev
 
-	# Generate usbguard(1) rules.
-	usbguard generate-policy > /etc/usbguard/rules.conf
+	# Fix sulogin(8).
+	mkdir /etc/systemd/system/{emergency,rescue}.service.d
+	read -d '' <<-EOF
+		[Service]
+		Environment=SYSTEMD_SULOGIN_FORCE=1
+	EOF
 
-	# Configure tlp(1).
-	Args='s/#TLP_DEFAULT_MODE=AC/TLP_DEFAULT_MODE=BAT/'
-	Args+='; s/#TLP_PERSISTENT_DEFAULT=0/TLP_PERSISTENT_DEFAULT=1/'
-	Args+='; s/#USB_AUTOSUSPEND=1/USB_AUTOSUSPEND=0/'
-	sed -i "$Args" /etc/tlp.conf
-	unset -v Args
+	printf '%s' "$REPLY" > /etc/systemd/system/emergency.service.d/sulogin.conf
+	printf '%s' "$REPLY" > /etc/systemd/system/rescue.service.d/sulogin.conf
 
-	# Enable 'schedutil' governor.
-	sed -i "s/#governor='ondemand'/governor='schedutil'/" /etc/default/cpupower
+	# Allow systemd-logind(8) to see /proc.
+	mkdir /etc/systemd/system/systemd-logind.service.d
+	read -d '' <<-EOF
+		[Service]
+		SupplementaryGroups=proc
+	EOF
 
-	# Symlink bash(1) to rbash(1).
-	ln -sT bash /usr/bin/rbash
+	printf '%s' "$REPLY" > /etc/systemd/system/systemd-logind.service.d/hidepid.conf
 
-	# Symlink dash(1) to sh(1).
-	ln -sfT dash /usr/bin/sh
+	# Limit /proc/user/$UID size to 1 GiB.
+	sed -i 's/#RuntimeDirectorySize=10%/RuntimeDirectorySize=1G/' /etc/systemd/logind.conf
 
 	# Setup tmpfiles.
 	read -d '' <<-EOF
@@ -959,17 +962,24 @@ else
 
 	printf '%s' "$REPLY" > /etc/tmpfiles.d/tmp.conf
 
-	# Allow systemd-logind(8) to see /proc.
-	mkdir /etc/systemd/system/systemd-logind.service.d
-	read -d '' <<-EOF
-		[Service]
-		SupplementaryGroups=proc
-	EOF
+	# Generate usbguard(1) rules.
+	usbguard generate-policy > /etc/usbguard/rules.conf
 
-	printf '%s' "$REPLY" > /etc/systemd/system/systemd-logind.service.d/hidepid.conf
+	# Configure tlp(1).
+	Args='s/#TLP_DEFAULT_MODE=AC/TLP_DEFAULT_MODE=BAT/'
+	Args+='; s/#TLP_PERSISTENT_DEFAULT=0/TLP_PERSISTENT_DEFAULT=1/'
+	Args+='; s/#USB_AUTOSUSPEND=1/USB_AUTOSUSPEND=0/'
+	sed -i "$Args" /etc/tlp.conf
+	unset -v Args
 
-	# Limit /proc/user/$UID size to 1 GiB.
-	sed -i 's/#RuntimeDirectorySize=10%/RuntimeDirectorySize=1G/' /etc/systemd/logind.conf
+	# Enable 'schedutil' governor.
+	sed -i "s/#governor='ondemand'/governor='schedutil'/" /etc/default/cpupower
+
+	# Symlink bash(1) to rbash(1).
+	ln -sT bash /usr/bin/rbash
+
+	# Symlink dash(1) to sh(1).
+	ln -sfT dash /usr/bin/sh
 
 	# Enable services.
 	ufw enable
