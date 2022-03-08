@@ -367,8 +367,8 @@ else
 	# Must disable this if mkinitcpio(8) is used.
 	#Kernel+=" initrd=\\$CPU-ucode.img initrd=\\initramfs-linux-hardened.img"
 
-	# Quiet.
-	Kernel+=' quiet loglevel=0'
+	# Only show kernel errors.
+	Kernel+=' quiet loglevel=3 rd.udev.log_level=3 rd.systemd.show_status=auto'
 
 	# Enable Apparmor.
 	Kernel+=' lsm=landlock,lockdown,yama,apparmor,bpf'
@@ -571,15 +571,15 @@ else
 
 		# Create symlinks.
 		ln -s run/media /
-		ln -sf /usr/share/fontconfig/conf.avail/10-hinting-slight.conf /etc/fonts/conf.d
-		ln -sf /usr/share/fontconfig/conf.avail/10-sub-pixel-rgb.conf /etc/fonts/conf.d
-		ln -sf /usr/share/fontconfig/conf.avail/11-lcdfilter-default.conf /etc/fonts/conf.d
+
+		Dir=/usr/share/fontconfig/conf.avail
+		ln -sf "$Dir"/{10-hinting-slight,10-sub-pixel-rgb,11-lcdfilter-default}.conf /etc/fonts/conf.d
 
 		# Use LUKS2 in udisks(8).
 		sed -i '/encryption/s/luks1/luks2/' /etc/udisks2/udisks2.conf
 	fi
 
-	unset GPU OptsPkgs OptsDeps
+	unset GPU OptsPkgs OptsDeps Dir
 
 	# Download ZRam script.
 	URL=https://raw.githubusercontent.com/ides3rt/extras/master/src/zram-setup.sh
@@ -758,7 +758,7 @@ else
 			[Service]
 			Type=simple
 			ExecStart=
-			ExecStart=-/sbin/agetty -o '-p -f -- \\\\u' --autologin $Username - \$TERM
+			ExecStart=-/sbin/agetty -8 -a $Username -i -n -N -o '-p -f -- \\\\u' - \$TERM
 		EOF
 
 		printf '%s' "$REPLY" > "$File"
