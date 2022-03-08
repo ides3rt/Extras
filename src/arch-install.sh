@@ -455,6 +455,12 @@ else
 	# Disable Watchdog as it meant for server usage.
 	Kernel+=' modprobe.blacklist=iTCO_wdt nowatchdog'
 
+	# Remove console cursor blinking.
+	#
+	# Also, I don't recommended this if you're using disk encryption
+	# on rootfs, unless you've a keyfile.
+	(( KeyFile == 1 )) && Kernel+=' vt.global_cursor_default=0'
+
 	# Disable ZSwap as we already enabled ZRam.
 	Kernel+=' zswap.enabled=0'
 
