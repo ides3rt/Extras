@@ -158,6 +158,7 @@ if (( Root == Init )); then
 	chmod 700 /mnt/var/lib/{machines,portables}
 
 	# Install base packages.
+	sed -i 's,usr/bin/sh,,' /etc/pacman.conf
 	pacstrap /mnt base linux-hardened linux-hardened-headers linux-firmware neovim "$CPU"-ucode
 	chattr +C /mnt/tmp
 
@@ -364,11 +365,11 @@ else
 
 	# Specify the initrd files.
 	#
-	# Must disable this if mkinitcpio(8) is used.
+	# Must be commented out if mkinitcpio(8) is in used.
 	#Kernel+=" initrd=\\$CPU-ucode.img initrd=\\initramfs-linux-hardened.img"
 
-	# Only show kernel errors.
-	Kernel+=' quiet loglevel=3 rd.udev.log_level=3 rd.systemd.show_status=auto'
+	# Don't show kernel messages.
+	Kernel+=' quiet loglevel=0 rd.udev.log_level=0 rd.systemd.show_status=false'
 
 	# Enable Apparmor.
 	Kernel+=' lsm=landlock,lockdown,yama,apparmor,bpf'
@@ -419,8 +420,8 @@ else
 	# Zero memory at allocation and free time.
 	Kernel+=' init_on_alloc=1 init_on_free=1'
 
-	# Makes the kernel panic on uncorrectable errors in ECC memory that an attacker
-	# could exploit.
+	# Makes the kernel panic on uncorrectable errors
+	# in ECC memory that an attacker could exploit.
 	Kernel+=' mce=0'
 
 	# Enable Kernel Page Table Isolation.
@@ -448,10 +449,13 @@ else
 	# Disable annoying OEM logo.
 	Kernel+=' bgrt_disable'
 
-	# Disable SSS as it meant for enterprise.
+	# Disable SSS as it meant for server usage.
 	Kernel+=' libahci.ignore_sss=1'
 
-	# Disable ZSwap as we enabled ZRam already.
+	# Disable Watchdog as it meant for server usage.
+	Kernel+=' modprobe.blacklist=iTCO_wdt nowatchdog'
+
+	# Disable ZSwap as we already enabled ZRam.
 	Kernel+=' zswap.enabled=0'
 
 	echo "$Kernel" > /etc/kernel/cmdline
@@ -495,6 +499,23 @@ else
 		fi
 	done <<< "$(lspci)"
 	unset -v Brand
+
+	# Setup /etc/modprobe.d, /etc/sysctl.d, and /etc/udev/rules.d.
+	(
+		cd /etc/modprobe.d
+		BaseURL=https://raw.githubusercontent.com/ides3rt/setup/master/src/etc/modprobe.d
+		curl -sO "$BaseURL"/30-security.conf
+		[[ $GPU == *nvidia* ]] && curl -sO "$BaseURL"/50-nvidia.conf
+
+		cd /etc/sysctl.d
+		BaseURL=https://github.com/ides3rt/setup/raw/master/src/etc/sysctl.d
+		curl -sO "$BaseURL"/99-sysctl.conf
+
+		cd /etc/udev/rules.d
+		BaseURL=https://raw.githubusercontent.com/ides3rt/setup/master/src/etc/udev/rules.d
+		curl -sO "$BaseURL"/60-ioschedulers.rules
+		[[ $GPU == *nvidia* ]] && curl -sO "$BaseURL"/70-nvidia.rules
+	)
 
 	OptsPkgs=(
 		git wget rsync # Downloading tools
@@ -612,10 +633,7 @@ else
 	# Symlink dash(1) to sh(1).
 	ln -sfT dash /usr/bin/sh
 
-	# Prevent pacman(8) from messing with /usr/bin/sh.
-	sed -i '/^#No/s/#//; s#^No.*#& usr/bin/sh#' /etc/pacman.conf
-
-	# Setup /var/tmp.
+	# Setup tmpfiles.
 	read -d '' <<-EOF
 		# See tmpfiles.d(5) for details.
 
@@ -695,7 +713,7 @@ else
 	chmod 640 /etc/doas.conf
 	chown :doas /etc/doas.conf
 
-	# Enable logging for Apparmor, and enable caching.
+	# Enable logging and enable caching for Apparmor.
 	groupadd -r audit
 	sed -i '/log_group/s/root/audit/' /etc/audit/auditd.conf
 	sed -i '/write-cache/s/#//' /etc/apparmor/parser.conf
