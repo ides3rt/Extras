@@ -920,14 +920,14 @@ else
 	unset -v F1 Mem Udev
 
 	# Fix sulogin(8).
-	mkdir /etc/systemd/system/{emergency,rescue}.service.d
+	mkdir /etc/systemd/system/{emergency,rescue}.target.d
 	read -d '' <<-EOF
 		[Service]
 		Environment=SYSTEMD_SULOGIN_FORCE=1
 	EOF
 
-	printf '%s' "$REPLY" > /etc/systemd/system/emergency.service.d/sulogin.conf
-	printf '%s' "$REPLY" > /etc/systemd/system/rescue.service.d/sulogin.conf
+	printf '%s' "$REPLY" > /etc/systemd/system/emergency.target.d/sulogin.conf
+	printf '%s' "$REPLY" > /etc/systemd/system/rescue.target.d/sulogin.conf
 
 	# Allow systemd-logind(8) to see /proc.
 	mkdir /etc/systemd/system/systemd-logind.service.d
