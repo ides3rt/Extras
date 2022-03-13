@@ -7,12 +7,12 @@ Err() {
 	(( $1 > 0 )) && exit $1
 }
 
-(( $# > 0 )) && Err 2 "not required argument..."
+(( $# > 0 )) && Err 2 "needn't argument..."
 
-((UID)) && Err 2 'needed to run as root user...'
+((UID)) && Err 2 'required root privileges...'
 
 if systemctl status systemd-udevd &>/dev/null; then
-	Err 1 'required systemd(1) and udev(7)...'
+	Err 1 'dependencies, `systemd` and `udev`, not found...'
 fi
 
 read F1 Mem _ < /proc/meminfo
@@ -31,12 +31,12 @@ echo "$Udev" > /etc/udev/rules.d/99-zram.rules
 
 echo '/dev/zram0 none swap pri=32767 0 0' >> /etc/fstab
 
-read -d '' <<-EOF > /etc/sysctl.d/99-zram.conf
+read -d '' <<-EOF
 	vm.swappiness = 200
 	vm.vfs_cache_pressure = 200
 	vm.page-cluster = 0
 EOF
 
-printf '%s' "$REPLY"
+printf '%s' "$REPLY" > /etc/sysctl.d/99-zram.conf
 
 printf '%s\n' "$Program: now, add 'zswap.enabled=0' to your kernel parameter..."

@@ -907,13 +907,13 @@ else
 	echo '/dev/zram0 none swap pri=32767 0 0' >> /etc/fstab
 
 	# Tweaks sysctl(8) for better results with zram.
-	read -d '' <<-EOF > /etc/sysctl.d/99-zram.conf
+	read -d '' <<-EOF
 		vm.swappiness = 200
 		vm.vfs_cache_pressure = 200
 		vm.page-cluster = 0
 	EOF
 
-	printf '%s' "$REPLY"
+	printf '%s' "$REPLY" > /etc/sysctl.d/99-zram.conf
 	unset -v F1 Mem Udev
 
 	# Fix sulogin(8).
