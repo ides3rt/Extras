@@ -550,9 +550,6 @@ else
 	# Restrict access to debugfs.
 	Kernel+=' debugfs=off'
 
-	# Disable Intel P-State.
-	Kernel+=' intel_pstate=disable'
-
 	# Disable annoying OEM logo.
 	Kernel+=' bgrt_disable'
 
@@ -593,7 +590,7 @@ else
 
 	fi
 
-	unset -v CryptNm CPU Disk P Modules System Mapper Kernel
+	unset -v CPU CryptNm Disk P Modules System Mapper Kernel
 
 	# Detect a GPU driver.
 	while read Brand; do
@@ -972,8 +969,12 @@ else
 	sed -i "$Args" /etc/tlp.conf
 	unset -v Args
 
-	# Enable 'schedutil' governor.
-	sed -i "s/#governor='ondemand'/governor='schedutil'/" /etc/default/cpupower
+	# Change CPU governor.
+	if [[ $(< /sys/devices/system/cpu/cpu0/cpufreq/scaling_driver) == acpi-cpufreq ]]; then
+		sed -i "s/#governor='ondemand'/governor='schedutil'/" /etc/default/cpupower
+	else
+		sed -i "s/#governor='ondemand'/governor='powersave'/" /etc/default/cpupower
+	fi
 
 	# Symlink bash(1) to rbash(1).
 	ln -sT bash /usr/bin/rbash
