@@ -661,7 +661,7 @@ else
 	File=/tmp/"${URL##*/}"
 
 	# Setup zram.
-	curl -so "$File"
+	curl -sO "$URL"
 	bash "$File"
 
 	# Fix sulogin(8).
@@ -896,8 +896,8 @@ else
 		Dir=/tmp/"${URL##*/}"
 
 		# Download my keymap.
-		git clone "$URL" "$Dir"
-		"$Dir"/installer.sh
+		git clone -q "$URL" "$Dir"
+		bash "$Dir"/installer.sh
 
 		# Make it the default.
 		echo 'KEYMAP=grammak-iso' > "$VConsole"
@@ -910,10 +910,6 @@ else
 	fi
 
 	unset -v VConsole
-
-	# Remove sudo(8).
-	pacman -Rns --noconfirm sudo
-	pacman -Sc --noconfirm
 
 	# Create initramfs again -- for mature.
 	mkinitcpio -P
