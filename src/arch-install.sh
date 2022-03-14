@@ -452,7 +452,7 @@ else
 		dbus-broker # Better dbus(1)
 		jitterentropy # Additional entropy source
 		macchanger # MAC address spoof
-		tlp cpupower # Power-saving tools
+		tlp # Power-saving tools
 	)
 
 	# Install additional packages.
@@ -870,7 +870,7 @@ else
 		systemctl enable libvirtd.socket
 		systemctl --global enable pipewire-pulse
 
-		# Make X.org run rootless by default.
+		# Make X.Org run rootless by default.
 		echo 'needs_root_rights = no' > /etc/X11/Xwrapper.config
 
 		# Flatpak.
@@ -880,6 +880,18 @@ else
 		# Create symlinks.
 		ln -s run/media /
 
+		# Configure pipewire(1).
+		if pacman -Q wireplumber &>/dev/null; then
+			Dir=/etc/wireplumber/main.lua.d
+			mkdir -p "$Dir"
+			cp /usr/share/wireplumber/main.lua.d/50-alsa-config.lua "$Dir"
+
+			Args='s/--\["session.suspend-timeout-seconds"\] = 5/\["session.suspend-timeout-seconds"\] = 0/'
+			sed -i "$Args" "$Dir"/50-alsa-config.lua
+			unset -v Dir Args
+		fi
+
+		# Better fonts.
 		Dir=/usr/share/fontconfig/conf.avail
 		ln -sf "$Dir"/{10-hinting-slight,10-sub-pixel-rgb,11-lcdfilter-default}.conf /etc/fonts/conf.d
 
@@ -894,7 +906,7 @@ else
 	echo 'options zram num_devices=1' > /etc/modprobe.d/99-zram.conf
 
 	# Find the amounts of RAM.
-	read F1 Mem _ < /proc/meminfo
+	read _ Mem _ < /proc/meminfo
 	Mem=$(( ( $Mem / 1024 / 1024 + 1 ) * 2 ))
 
 	# Enable zram via udev(7).
@@ -914,7 +926,7 @@ else
 	EOF
 
 	printf '%s' "$REPLY" > /etc/sysctl.d/99-zram.conf
-	unset -v F1 Mem Udev
+	unset -v Mem Udev
 
 	# Fix sulogin(8).
 	mkdir /etc/systemd/system/{emergency,rescue}.target.d
@@ -962,19 +974,51 @@ else
 	# Generate usbguard(1) rules.
 	usbguard generate-policy > /etc/usbguard/rules.conf
 
-	# Configure tlp(1).
+	# Set default mode to AC.
 	Args='s/#TLP_DEFAULT_MODE=AC/TLP_DEFAULT_MODE=BAT/'
-	Args+='; s/#TLP_PERSISTENT_DEFAULT=0/TLP_PERSISTENT_DEFAULT=1/'
-	Args+='; s/#USB_AUTOSUSPEND=1/USB_AUTOSUSPEND=0/'
-	sed -i "$Args" /etc/tlp.conf
-	unset -v Args
+
+	# Load 'powersave' CPU governor module.
+	echo cpufreq_powersave > /etc/modules-load.d/cpufreq.conf
 
 	# Change CPU governor.
+	Args+='; /CPU_SCALING_GOVERNOR/s/#//'
 	if [[ $(< /sys/devices/system/cpu/cpu0/cpufreq/scaling_driver) == acpi-cpufreq ]]; then
-		sed -i "s/#governor='ondemand'/governor='schedutil'/" /etc/default/cpupower
-	else
-		sed -i "s/#governor='ondemand'/governor='powersave'/" /etc/default/cpupower
+		Args+='; /CPU_SCALING_GOVERNOR_ON_AC/s/powersave/schedutil/'
 	fi
+
+	# CPU boost.
+	Args+='; /CPU_BOOST/s/#//'
+
+	# Powersave stuff.
+	Args+='; /SCHED_POWERSAVE/s/#//'
+	Args+='; /SCHED_POWERSAVE_ON_AC/s/0/1/'
+
+	# Get disk-id.
+	while IFS=': ' read _ DiskID; do
+		AllDisk+=("$DiskID")
+	done <<< "$(tlp diskid)"
+
+	# Disk management.
+	Args+="; s/#DISK_DEVICES=.*/DISK_DEVICES=\"${AllDisk[*]}\"/"
+	unset DiskID AllDisk
+
+	# Runtime power management.
+	Args+='; /#AHCI_RUNTIME_PM_ON/s/#//'
+	Args+='; /AHCI_RUNTIME_PM_ON_AC/s/on/auto/'
+
+	# Disable disk suspend.
+	Args+='; s/#AHCI_RUNTIME_PM_TIMEOUT=15/AHCI_RUNTIME_PM_TIMEOUT=0/'
+
+	# Runtime power management for PCIe.
+	Args+='; /#RUNTIME_PM_ON/s/#//'
+	Args+='; /RUNTIME_PM_ON_AC/s/on/auto/'
+
+	# Disable USB auto-suspend.
+	Args+='; s/#USB_AUTOSUSPEND=1/USB_AUTOSUSPEND=0/'
+
+	# Configure tlp(1).
+	sed -i "$Args" /etc/tlp.conf
+	unset -v Disk Args
 
 	# Symlink bash(1) to rbash(1).
 	ln -sT bash /usr/bin/rbash
@@ -985,7 +1029,7 @@ else
 	# Enable services.
 	ufw enable
 	systemctl disable dbus
-	systemctl enable apparmor auditd cpupower dbus-broker fcron tlp ufw usbguard
+	systemctl enable apparmor auditd dbus-broker fcron tlp ufw usbguard
 	systemctl --global enable dbus-broker
 
 	# Create MAC address randomizer service.
@@ -1011,13 +1055,13 @@ else
 	printf '%s' "$REPLY" > /etc/systemd/system/macspoof@.service
 
 	# Detect network interface.
-	while IFS=': ' read F1 Ifname _; do
-		[[ $F1 == 2 ]] && break
+	while IFS=': ' read Nr Ifname _; do
+		[[ $Nr == 2 ]] && break
 	done <<< "$(ip a)"
 
 	# Enable MAC address randomizer service.
 	systemctl enable macspoof@"$Ifname"
-	unset -v F1 Ifname
+	unset -v Nr Ifname
 
 	# Symlink /usr/local/bin to /usr/local/sbin.
 	rmdir /usr/local/sbin

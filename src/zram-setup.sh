@@ -15,7 +15,7 @@ if systemctl status systemd-udevd &>/dev/null; then
 	Err 1 'dependencies, `systemd` and `udev`, not found...'
 fi
 
-read F1 Mem _ < /proc/meminfo
+read _ Mem _ < /proc/meminfo
 
 Mem=$(( ( $Mem / 1024 / 1024 + 1 ) * 2 ))
 
