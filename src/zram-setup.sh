@@ -11,7 +11,7 @@ Err() {
 
 ((UID)) && Err 2 'required root privileges...'
 
-if systemctl status systemd-udevd &>/dev/null; then
+if [[ -f /lib/systemd/systemd && -f /lib/systemd/systemd-udevd ]]; then
 	Err 1 'dependencies, `systemd` and `udev`, not found...'
 fi
 
