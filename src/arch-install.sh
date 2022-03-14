@@ -975,7 +975,7 @@ else
 	usbguard generate-policy > /etc/usbguard/rules.conf
 
 	# Set default mode to AC.
-	Args='s/#TLP_DEFAULT_MODE=AC/TLP_DEFAULT_MODE=BAT/'
+	Args='/TLP_DEFAULT_MODE=AC/s/#//'
 
 	# Load 'powersave' CPU governor module.
 	echo cpufreq_powersave > /etc/modules-load.d/cpufreq.conf
