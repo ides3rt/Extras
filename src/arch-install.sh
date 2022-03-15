@@ -875,7 +875,7 @@ else
 			[Service]
 			Type=simple
 			ExecStart=
-			ExecStart=-/sbin/agetty -8 -a $Username -i -n -N -o '-p -f -- \\\\u' - \$TERM
+			ExecStart=-/sbin/agetty -a $Username -i -J -n -N %I \$TERM
 		EOF
 
 		printf '%s' "$REPLY" > "$File"
