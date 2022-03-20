@@ -337,6 +337,7 @@ else
 		dosfstools # FAT and it's derivative support
 		moreutils # Unix tools
 		autoconf automake bc bison fakeroot flex pkgconf # Development tools
+		clang lld # Better C complier
 		fcron # Cron tools
 		opendoas # Privileges elevator
 		ufw # Firewall
@@ -353,6 +354,7 @@ else
 
 	# Install additional packages.
 	pacman -S --noconfirm "${AddsPkgs[@]}"
+	pacman -S --noconfirm --asdeps llvm
 	unset AddsPkgs
 
 	# Find the rootfs UUID.
