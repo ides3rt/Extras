@@ -2,75 +2,82 @@
 
 trap 'echo Interrupt signal received; exit' SIGINT
 
-# Base repository URL.
-RepoURL=https://raw.githubusercontent.com/ides3rt
+# Base repository's URL.
+git_url=https://github.com/ides3rt
+raw_url=https://raw.githubusercontent.com/ides3rt
 
-# Use Grammak keymap or not. 1=yes, otherwise no.
-Grammak="${Grammak:-1}"
+# Use Grammak keymap or not.
+grammak=true
 
-# Use keyfile or not. 1=yes, otherwise no.
-# Mind you that /boot partition is unencrypted.
-# If keyfile is disable, then auto login will be enable.
-KeyFile="${KeyFile:-0}"
+# Use keyfile or not. Mind you that /boot is unencrypted.
+# If keyfile is disable, then auto-login will be enable.
+key_file=false
+
+# Encryption name.
+crypt_nm=luks0
 
 # Detect CPU.
-while read VendorID; do
-	if [[ $VendorID == *vendor_id* ]]; then
-		case "$VendorID" in
+while read; do
+	if [[ $REPLY == *vendor_id* ]]; then
+		case $REPLY in
 			*AMD*)
-				CPU=amd ;;
+				cpu=amd ;;
 
 			*Intel*)
-				CPU=intel ;;
+				cpu=intel ;;
 		esac
 		break
 	fi
 done < /proc/cpuinfo
-unset -v VendorID
 
-# Encryption name.
-CryptNm=luks0
+# Number of processors.
+proc=$(( `nproc` + 1 ))
+
+# Configure makepkg.conf(5).
+url=$raw_url/setup/master/src/etc/makepkg.conf
+curl -s "$url" | sed "/MAKEFLAGS=/s/[[:digit:]]/$proc/g" > /etc/makepkg.conf
 
 # Configure pacman.conf(5).
-URL="$RepoURL"/setup/master/src/etc/pacman.conf
-curl -s "$URL" | sed "/ParallelDownloads/s/7/$(( `nproc` + 1 ))/" > /etc/pacman.conf
+url=$raw_url/setup/master/src/etc/pacman.conf
+curl -s "$url" | sed "/ParallelDownloads/s/[[:digit:]]/$proc/g" > /etc/pacman.conf
+unset -v proc
 
-read Root _ <<< "$(ls -di /)"
-read Init _ <<< "$(ls -di /proc/1/root/.)"
+read root_id _ <<< "$(ls -di /)"
+read init_id _ <<< "$(ls -di /proc/1/root/.)"
 
-if (( Root == Init )); then
+if (( root_id == init_id )); then
 
-	if (( Grammak == 1 )); then
+	if [[ $grammak == true ]]; then
 		# My keymap link.
-		URL="$RepoURL"/grammak/master/src/grammak-iso.map
-		File="${URL##*/}"
+		url=$raw_url/grammak/master/src/grammak-iso.map
+		file=${url##*/}
 
 		# Download my keymap.
-		curl -sO "$URL"
-		gzip "$File"
+		curl -sO "$url"
+		gzip "$file"
 
 		# Set my keymap.
-		loadkeys "$File".gz &>/dev/null
+		loadkeys "$file".gz &>/dev/null
 
 		# Remove the keymap file.
-		rm -f "$File".gz
-		unset -v URL File
+		rm -f "$file".gz
+		unset -v url file
 	fi
 
 	# Partition, format, and mount the drive.
 	PS3='Select your disk: '
-	select Disk in $(lsblk -dne 7 -o PATH); do
-		[[ -z $Disk ]] && continue
+	select disk in $(lsblk -dne 7 -o PATH); do
+		[[ -z $disk ]] && continue
 
-		parted "$Disk" mklabel gpt || exit 1
-		sgdisk "$Disk" -n=1:0:+512M -t=1:ef00
-		sgdisk "$Disk" -n=2:0:0
+		parted "$disk" mklabel gpt || exit 1
+		sgdisk "$disk" -n=1:0:+512M -t=1:ef00
+		sgdisk "$disk" -n=2:0:0
 
-		[[ $Disk == *nvme* ]] && P=p
-		mkfs.fat -F 32 -n ESP "$Disk$P"1
+		[[ $disk == *nvme* ]] && p=p
+		mkfs.fat -F 32 -n ESP "$disk$p"1
 
-		if (( KeyFile == 1 )); then
-			FormatFlags=(
+		if [[ key_file == true ]]; then
+			crypt_fm=(
 				-h sha512 # Use SHA-512 instead
 				-S 1 # Add to keyslot 1 instead of slot 0
 				-i 5000 # Use itertime of 5 secs
@@ -78,32 +85,30 @@ if (( Root == Init )); then
 		fi
 
 		while :; do
-			cryptsetup -v "${FormatFlags[@]}" luksFormat "$Disk$P"2 && break
+			cryptsetup -v "${crypt_fm[@]}" luksFormat "$disk$p"2 && break
 		done
+		unset key_file crypt_fm
 
-		unset KeyFile FormatFlags
+		read rotation < /sys/block/"${disk#/dev/}"/queue/rotational
 
-		read Rotation < /sys/block/"${Disk#/dev/}"/queue/rotational
-
-		if (( Rotation == 0 )); then
-			CryptFlags=(
+		if (( rotation == 0 )); then
+			crypt_flags=(
 				--perf-no_read_workqueue # Disable read queue
 				--perf-no_write_workqueue # Disable write queue
 				--persistent # Make it the default option
 			)
 
-			ESPFlags=,discard # Enable 'discard'
+			esp_flags=,discard # Enable 'discard'
 		fi
+		unset -v rotation
 
-		unset -v Rotation
+		cryptsetup -v "${crypt_flags[@]}" open "$disk$p"2 "$crypt_nm" || exit 1
+		unset crypt_flags
 
-		cryptsetup -v "${CryptFlags[@]}" open "$Disk$P"2 "$CryptNm" || exit 1
-		unset CryptFlags
+		mapper=/dev/mapper/"$crypt_nm"
+		mkfs.btrfs -f -L Arch "$mapper"
 
-		Mapper=/dev/mapper/"$CryptNm"
-		mkfs.btrfs -f -L Arch "$Mapper"
-
-		mount "$Mapper" /mnt
+		mount "$mapper" /mnt
 		btrfs su cr /mnt/@
 
 		btrfs su cr /mnt/@/boot
@@ -130,21 +135,21 @@ if (( Root == Init )); then
 		btrfs su set-default /mnt/@/.snapshots/0/snapshot
 
 		umount /mnt
-		mount -o nodev,noatime,compress-force=zstd:1,space_cache=v2 "$Mapper" /mnt
+		mount -o nodev,noatime,compress-force=zstd:1,space_cache=v2 "$mapper" /mnt
 
 		mkdir -p /mnt/{.snapshots,boot,efi,home,opt,root,srv,'usr/local',var}
 		chattr +C /mnt/{boot,efi,var}
 		chmod 700 /mnt/{boot,efi,root}
 
-		mount -o nosuid,nodev,noexec,noatime,fmask=0177,dmask=0077"$ESPFlags" "$Disk$P"1 /mnt/efi
-		mount -o nodev,noatime,compress-force=zstd:1,space_cache=v2,subvol=@/boot "$Mapper" /mnt/boot
-		mount -o nodev,noatime,compress-force=zstd:1,space_cache=v2,subvol=@/home "$Mapper" /mnt/home
-		mount -o nodev,noatime,compress-force=zstd:1,space_cache=v2,subvol=@/opt "$Mapper" /mnt/opt
-		mount -o nodev,noatime,compress-force=zstd:1,space_cache=v2,subvol=@/root "$Mapper" /mnt/root
-		mount -o nodev,noatime,compress-force=zstd:1,space_cache=v2,subvol=@/srv "$Mapper" /mnt/srv
-		mount -o nodev,noatime,compress-force=zstd:1,space_cache=v2,subvol=@/usr/local "$Mapper" /mnt/usr/local
-		mount -o nodev,noatime,compress-force=zstd:1,space_cache=v2,subvol=@/var "$Mapper" /mnt/var
-		mount -o nodev,noatime,compress-force=zstd:1,space_cache=v2,subvol=@/.snapshots "$Mapper" /mnt/.snapshots
+		mount -o nosuid,nodev,noexec,noatime,fmask=0177,dmask=0077"$esp_flags" "$disk$p"1 /mnt/efi
+		mount -o nodev,noatime,compress-force=zstd:1,space_cache=v2,subvol=@/boot "$mapper" /mnt/boot
+		mount -o nodev,noatime,compress-force=zstd:1,space_cache=v2,subvol=@/home "$mapper" /mnt/home
+		mount -o nodev,noatime,compress-force=zstd:1,space_cache=v2,subvol=@/opt "$mapper" /mnt/opt
+		mount -o nodev,noatime,compress-force=zstd:1,space_cache=v2,subvol=@/root "$mapper" /mnt/root
+		mount -o nodev,noatime,compress-force=zstd:1,space_cache=v2,subvol=@/srv "$mapper" /mnt/srv
+		mount -o nodev,noatime,compress-force=zstd:1,space_cache=v2,subvol=@/usr/local "$mapper" /mnt/usr/local
+		mount -o nodev,noatime,compress-force=zstd:1,space_cache=v2,subvol=@/var "$mapper" /mnt/var
+		mount -o nodev,noatime,compress-force=zstd:1,space_cache=v2,subvol=@/.snapshots "$mapper" /mnt/.snapshots
 
 		mkdir -p /mnt/state/var
 		chattr +C /mnt/state/var
@@ -152,7 +157,7 @@ if (( Root == Init )); then
 		mkdir -p /mnt/{,state/}var/lib/pacman
 		mount --bind /mnt/state/var/lib/pacman /mnt/var/lib/pacman
 
-		unset -v Disk P Mapper ESPFlags
+		unset -v disk p mapper esp_flags
 		break
 	done
 
@@ -162,16 +167,16 @@ if (( Root == Init )); then
 
 	# Install base packages.
 	sed -i 's,usr/bin/sh,,' /etc/pacman.conf
-	pacstrap /mnt base linux-hardened linux-hardened-headers linux-firmware neovim "$CPU"-ucode
+	pacstrap /mnt base linux-hardened linux-hardened-headers linux-firmware neovim "$cpu"-ucode
 	chattr +C /mnt/tmp
 
 	# Generate fstab(5).
-	Args='/^#/d; s/[[:blank:]]+/ /g; s/rw,//; s/,ssd//; s/,subvolid=[[:digit:]]+//'
-	Args+='; s#/@#@#; s#,subvol=@/\.snapshots/0/snapshot##; /\/efi/s/.$/1/'
-	Args+='; s/,codepage=437,iocharset=ascii,shortname=mixed,utf8,errors=remount-ro//'
-	Args+='; /\/var\/lib\/pacman/d'
-	genfstab -U /mnt | sed -E "$Args" | cat -s > /mnt/etc/fstab
-	unset -v Args CPU
+	args='/^#/d; s/[[:blank:]]+/ /g; s/rw,//; s/,ssd//; s/,subvolid=[[:digit:]]+//'
+	args+='; s#/@#@#; s#,subvol=@/\.snapshots/0/snapshot##; /\/efi/s/.$/1/'
+	args+='; s/,codepage=437,iocharset=ascii,shortname=mixed,utf8,errors=remount-ro//'
+	args+='; /\/var\/lib\/pacman/d'
+	genfstab -U /mnt | sed -E "$args" | cat -s > /mnt/etc/fstab
+	unset -v cpu args
 
 	# Make fstab(5) handle bind mount properly.
 	echo '/state/var/lib/pacman /var/lib/pacman none bind 0 0' >> /mnt/etc/fstab
@@ -199,18 +204,18 @@ if (( Root == Init )); then
 	# Copy install script to /mnt.
 	if [[ -f $0 ]]; then
 		cp "$0" /mnt/opt
-		Exec="${0##*/}"
+		instll=${0##*/}
 	else
-		URL="$RepoURL"/extras/master/src/arch-install.sh
-		Exec="${URL##*/}"
+		url=$raw_url/extras/master/src/arch-install.sh
+		instll=${url##*/}
 
-		curl -so /mnt/opt/"$Exec" "$URL"
-		unset -v URL
+		curl -so /mnt/opt/"$instll" "$url"
+		unset -v url
 	fi
 
 	# Run install script in chroot.
-	arch-chroot /mnt bash /opt/"$Exec"
-	unset -v Exec
+	arch-chroot /mnt bash /opt/"$instll"
+	unset -v instll
 
 	# Remove /etc/resolv.conf as it's required for some
 	# programs to work correctly with systemd-resolved(8).
@@ -218,18 +223,18 @@ if (( Root == Init )); then
 
 	# Unmount /mnt.
 	umount -R /mnt
-	cryptsetup close "$CryptNm"
+	cryptsetup close "$crypt_nm"
 
 else
 
 	# Set date and time.
 	while :; do
 		read -p 'Your timezone: ' Timezone
-		[[ -f /usr/share/zoneinfo/$Timezone ]] && break
-		printf '%s\n' "Err: '$Timezone' doesn't exists..." 1>&2
+		[[ -f /usr/share/zoneinfo/$timezone ]] && break
+		printf '%s\n' "Err: $timezone: not found..." 1>&2
 	done
 
-	ln -sf /usr/share/zoneinfo/"$Timezone" /etc/localtime
+	ln -sf /usr/share/zoneinfo/"$timezone" /etc/localtime
 	hwclock --systohc
 
 	# Set locale.
@@ -239,8 +244,8 @@ else
 
 	# Hostname.
 	read -p 'Your hostname: ' Hostname
-	echo "$Hostname" > /etc/hostname
-	unset -v Hostname
+	echo "$hostname" > /etc/hostname
+	unset -v hostname
 
 	# Set up localhost.
 	read -d '' <<-EOF
@@ -278,15 +283,15 @@ else
 	printf '%s' "$REPLY" > /etc/systemd/network/20-dhcp.network
 
 	# Get device source.
-	Disk=$(lsblk -nso PATH "$(findmnt -nvo SOURCE /)" | tail -n 1)
+	disk=$(lsblk -nso PATH "$(findmnt -nvo SOURCE /)" | tail -n 1)
 
 	# Detect if it NVMe or SATA device.
-	if [[ $Disk == *nvme* ]]; then
-		Modules='nvme nvme_core'
-		Disk="${Disk%p*}"; P=p
+	if [[ $disk == *nvme* ]]; then
+		modules='nvme nvme_core'
+		disk=${disk%p*}; p=p
 	else
-		Modules='ahci sd_mod'
-		Disk="${Disk%%[1-9]}"
+		modules='ahci sd_mod'
+		disk=${disk%%[1-9]}
 	fi
 
 	# Remove fallback preset.
@@ -311,16 +316,16 @@ else
 
 	# Set up initramfs configuration file.
 	read -d '' <<-EOF
-		MODULES=($Modules btrfs)
+		MODULES=($modules btrfs)
 		BINARIES=()
-		FILES=(/etc/cryptsetup-keys.d/$CryptNm.key)
+		FILES=(/etc/cryptsetup-keys.d/$crypt_nm.key)
 		HOOKS=(systemd autodetect modconf keyboard sd-vconsole sd-encrypt)
 		COMPRESSION="lz4"
 		COMPRESSION_OPTIONS=(-12 --favor-decSpeed)
 	EOF
 
-	if (( KeyFile != 1 )); then
-		REPLY="${REPLY/\/etc\/cryptsetup-keys.d\/$CryptNm.key}"
+	if [[ $key_file == false ]]; then
+		REPLY="${REPLY/\/etc\/cryptsetup-keys.d\/$crypt_nm.key}"
 	fi
 
 	printf '%s' "$REPLY" > /etc/mkinitcpio.conf
@@ -331,7 +336,7 @@ else
 	# Remove fallback image.
 	rm -f /boot/initramfs-linux-hardened-fallback.img
 
-	AddsPkgs=(
+	add_pkg=(
 		btrfs-progs # BTRFS support
 		efibootmgr # UEFI manager
 		dosfstools # FAT and it's derivative support
@@ -353,212 +358,209 @@ else
 	)
 
 	# Install additional packages.
-	pacman -S --noconfirm "${AddsPkgs[@]}"
+	pacman -S --noconfirm "${add_pkg[@]}"
 	pacman -S --noconfirm --asdeps llvm
-	unset AddsPkgs
+	unset add_pkg
 
 	# Find the rootfs UUID.
-	System=$(lsblk -dno UUID "$Disk$P"2)
-	Mapper=$(findmnt -no UUID /)
+	root_id=$(lsblk -dno UUID "$disk$p"2)
+	mapper_id=$(findmnt -no UUID /)
 
 	# Options for LUKS.
-	echo "$CryptNm UUID=$System none password-echo=no" > /etc/crypttab.initramfs
+	echo "$crypt_nm UUID=$root_id none password-echo=no" > /etc/crypttab.initramfs
 	chmod 600 /etc/crypttab.initramfs
 
 	# Specify the rootfs.
-	Kernel="root=UUID=$Mapper ro"
+	kernel="root=UUID=$mapper_id ro"
 
 	# Specify the initrd files.
 	#
 	# Must be commented out if mkinitcpio(8) is in used.
-	#Kernel+=" initrd=\\$CPU-ucode.img initrd=\\initramfs-linux-hardened.img"
+	#kernel+=" initrd=\\$cpu-ucode.img initrd=\\initramfs-linux-hardened.img"
 
 	# Don't show kernel messages.
-	Kernel+=' quiet loglevel=0 rd.udev.log_level=0 rd.systemd.show_status=false'
+	kernel+=' quiet loglevel=0 rd.udev.log_level=0 rd.systemd.show_status=false'
 
 	# Enable Apparmor.
-	Kernel+=' lsm=landlock,lockdown,yama,apparmor,bpf'
+	kernel+=' lsm=landlock,lockdown,yama,apparmor,bpf'
 
 	# Enable all mitigations for Spectre 2.
-	Kernel+=' spectre_v2=on'
+	kernel+=' spectre_v2=on'
 
 	# Disable Speculative Store Bypass.
-	Kernel+=' spec_store_bypass_disable=on'
+	kernel+=' spec_store_bypass_disable=on'
 
 	# Disable TSX, enable all mitigations for the TSX Async Abort
 	# vulnerability and disable SMT.
-	Kernel+=' tsx=off tsx_async_abort=full,nosmt'
+	kernel+=' tsx=off tsx_async_abort=full,nosmt'
 
 	# Enable all mitigations for the MDS vulnerability and disable SMT.
-	Kernel+=' mds=full,nosmt'
+	kernel+=' mds=full,nosmt'
 
 	# Enable all mitigations for the L1TF vulnerability and disable SMT
 	# and L1D flush runtime control.
-	Kernel+=' l1tf=full,force'
+	kernel+=' l1tf=full,force'
 
 	# Force disable SMT.
-	Kernel+=' nosmt=force'
+	kernel+=' nosmt=force'
 
 	# Mark all huge pages in the EPT as non-executable to mitigate iTLB multihit.
-	Kernel+=' kvm.nx_huge_pages=force'
+	kernel+=' kvm.nx_huge_pages=force'
 
 	# Distrust the CPU for initial entropy at boot as it is not possible to
 	# audit, may contain weaknesses or a backdoor.
-	Kernel+=' random.trust_cpu=off'
+	kernel+=' random.trust_cpu=off'
 
 	# Enable IOMMU to prevent DMA attacks.
-	Kernel+=' intel_iommu=on amd_iommu=on'
+	kernel+=' intel_iommu=on amd_iommu=on'
 
 	# Disable the busmaster bit on all PCI bridges during very
 	# early boot to avoid holes in IOMMU.
 	#
 	# Keep in mind that this cmd cause my system to fails.
 	# However, it gets recommended by Whonix developers.
-	#Kernel+=' efi=disable_early_pci_dma'
+	#kernel+=' efi=disable_early_pci_dma'
 
 	# Disable the merging of slabs of similar sizes.
-	Kernel+=' slab_nomerge'
+	kernel+=' slab_nomerge'
 
 	# Enable sanity checks (F) and redzoning (Z).
-	Kernel+=' slub_debug=FZ'
+	kernel+=' slub_debug=FZ'
 
 	# Zero memory at allocation and free time.
-	Kernel+=' init_on_alloc=1 init_on_free=1'
+	kernel+=' init_on_alloc=1 init_on_free=1'
 
 	# Makes the kernel panic on uncorrectable errors
 	# in ECC memory that an attacker could exploit.
-	Kernel+=' mce=0'
+	kernel+=' mce=0'
 
 	# Enable Kernel Page Table Isolation.
 	#
 	# This cmd is already get enforce by linux-hardended kernel.
-	#Kernel+=' pti=on'
+	#kernel+=' pti=on'
 
 	# Vsyscalls are obsolete, are at fixed addresses and are a target for ROP.
-	Kernel+=' vsyscall=none'
+	kernel+=' vsyscall=none'
 
 	# Enable page allocator freelist randomization.
 	#
 	# This cmd is already get enforce by linux-hardended kernel.
-	#Kernel+=' page_alloc.shuffle=1'
+	#kernel+=' page_alloc.shuffle=1'
 
 	# Gather more entropy during boot.
-	Kernel+=' extra_latent_entropy'
+	kernel+=' extra_latent_entropy'
 
 	# Restrict access to debugfs.
-	Kernel+=' debugfs=off'
+	kernel+=' debugfs=off'
 
 	# Disable annoying OEM logo.
-	Kernel+=' bgrt_disable'
+	kernel+=' bgrt_disable'
 
 	# Disable SSS as it meant for server usage.
-	Kernel+=' libahci.ignore_sss=1'
+	kernel+=' libahci.ignore_sss=1'
 
 	# Disable Watchdog as it meant for server usage.
-	Kernel+=' modprobe.blacklist=iTCO_wdt nowatchdog'
+	kernel+=' modprobe.blacklist=iTCO_wdt nowatchdog'
 
 	# Remove console cursor blinking.
 	#
 	# Also, I don't recommended this if you're using disk encryption
 	# on rootfs, unless you've a keyfile.
-	(( KeyFile == 1 )) && Kernel+=' vt.global_cursor_default=0'
+	[[ $key_file == true ]] && kernel+=' vt.global_cursor_default=0'
 
 	# Disable zswap as we already enabled zram.
-	Kernel+=' zswap.enabled=0'
+	kernel+=' zswap.enabled=0'
 
-	echo "$Kernel" > /etc/kernel/cmdline
+	echo "$kernel" > /etc/kernel/cmdline
 
 	# Install bootloader to UEFI.
-	efibootmgr --disk "$Disk" --part 1 --create \
+	efibootmgr --disk "$disk" --part 1 --create \
 		--label 'Arch Linux' \
 		--loader '\EFI\ARCHX64\linux-hardended.efi'
 
-	if (( KeyFile == 1 )); then
-
+	if [[ $key_file == true ]]; then
 		# Create directory for keyfile to live in.
 		mkdir /etc/cryptsetup-keys.d
 		chmod 700 /etc/cryptsetup-keys.d
 
 		# Create a keyfile to auto mount LUKS device.
-		dd bs=8k count=1 if=/dev/urandom of=/etc/cryptsetup-keys.d/"$CryptNm".key iflag=fullblock &>/dev/null
-		chmod 600 /etc/cryptsetup-keys.d/"$CryptNm".key
+		dd bs=8k count=1 if=/dev/urandom of=/etc/cryptsetup-keys.d/"$crypt_nm".key iflag=fullblock &>/dev/null
+		chmod 600 /etc/cryptsetup-keys.d/"$crypt_nm".key
 
 		# Add a keyfile.
-		cryptsetup -v -h sha256 -S 0 -i 1000 luksAddKey "$Disk$P"2 /etc/cryptsetup-keys.d/"$CryptNm".key
-
+		cryptsetup -v -h sha256 -S 0 -i 1000 luksAddKey "$disk$p"2 /etc/cryptsetup-keys.d/"$crypt_nm".key
 	fi
 
-	unset -v CPU CryptNm Disk P Modules System Mapper Kernel
+	unset -v cpu crypt_nm disk p modules root_id mapper_id kernel
 
 	# Detect a GPU driver.
-	while read Brand; do
-		if [[ $Brand == *VGA* ]]; then
-			case "$Brand" in
+	while read; do
+		if [[ $REPLY == *VGA* ]]; then
+			case $REPLY in
 				*AMD*)
-					GPU=xf86-video-amdgpu ;;
+					gpu=xf86-video-amdgpu ;;
 
 				*Intel*)
-					GPU=xf86-video-intel ;;
+					gpu=xf86-video-intel ;;
 
 				*NVIDIA*)
-					GPU=nvidia-dkms ;;
+					gpu=nvidia-dkms ;;
 			esac
 			break
 		fi
 	done <<< "$(lspci)"
-	unset -v Brand
 
-	BaseURL="$RepoURL"/setup/master/src
+	base_url=$raw_url/setup/master/src
 
 	(
 		# Setup /etc/modprobe.d
-		DirURL="$BaseURL"/etc/modprobe.d
-		cd "${DirURL#$BaseURL}"
+		dir_url=$base_url/etc/modprobe.d
+		cd "${dir_url#$base_url}"
 
 		# 30-security.conf
-		URL="$DirURL"/30-security.conf
-		curl -sO "$URL"
+		url=$dir_url/30-security.conf
+		curl -sO "$url"
 
 		# 50-nvidia.conf
-		if [[ $GPU == *nvidia* ]]; then
-			URL="$DirURL"/50-nvidia.conf
-			curl -sO "$URL"
+		if [[ $gpu == *nvidia* ]]; then
+			url=$dir_url/50-nvidia.conf
+			curl -sO "$url"
 		fi
 	)
 
 	(
 		# Setup /etc/sysctl.d
-		DirURL="$BaseURL"/etc/sysctl.d
-		cd "${DirURL#$BaseURL}"
+		dir_url=$base_url/etc/sysctl.d
+		cd "${dir_url#$base_url}"
 
 		# 30-security.conf
-		URL="$DirURL"/30-security.conf
-		curl -sO "$URL"
+		url=$dir_url/30-security.conf
+		curl -sO "$url"
 
 		# 50-printk.conf
-		URL="$DirURL"/50-printk.conf
-		curl -sO "$URL"
+		url=$dir_url/50-printk.conf
+		curl -sO "$url"
 	) && > /etc/ufw/sysctl.conf
 
 	(
 		# Setup /etc/udev/rules.d
-		DirURL="$BaseURL"/etc/udev/rules.d
-		cd "${DirURL#$BaseURL}"
+		dir_url=$base_url/etc/udev/rules.d
+		cd "${dir_url#$base_url}"
 
 		# 60-ioschedulers.rules
-		URL="$DirURL"/60-ioschedulers.rules
-		curl -sO "$URL"
+		url=$dir_url/60-ioschedulers.rules
+		curl -sO "$url"
 
 		# 70-nvidia.rules
-		if [[ $GPU == *nvidia* ]]; then
-			URL="$DirURL"/70-nvidia.rules
-			curl -sO "$URL"
+		if [[ $gpu == *nvidia* ]]; then
+			url=$dir_url/70-nvidia.rules
+			curl -sO "$url"
 		fi
 	)
 
-	unset -v BaseURL
+	unset -v base_url
 
-	OptsPkgs=(
+	opt_pkg=(
 		git wget rsync # Downloading tools
 		virt-manager # Virtual machine
 		htop # System monitor
@@ -598,7 +600,7 @@ else
 		neofetch cowsay cmatrix figlet sl fortune-mod lolcat doge # Useless staff
 	)
 
-	OptsDeps=(
+	opt_dep=(
 		qemu ebtables dnsmasq # Optional deps for libvirtd(8)
 		edk2-ovmf # EFI support in Archiso
 		lsof strace # Better htop(1)
@@ -615,13 +617,13 @@ else
 	)
 
 	# Install "optional" packages.
-	pacman -S "$GPU" "${OptsPkgs[@]}"
+	pacman -S "$gpu" "${opt_pkg[@]}"
 
 	if (( $? == 0 )); then
-		pacman -Q noto-fonts &>/dev/null && OptsDeps+=( noto-fonts-emoji )
+		pacman -Q noto-fonts &>/dev/null && opt_dep+=( noto-fonts-emoji )
 
 		# Install optional dependencies.
-		yes | pacman -S --asdeps "${OptsDeps[@]}"
+		yes | pacman -S --asdeps "${opt_dep[@]}"
 
 		# Enable services.
 		systemctl enable libvirtd.socket
@@ -639,32 +641,32 @@ else
 
 		# Configure pipewire(1).
 		if pacman -Q wireplumber &>/dev/null; then
-			Dir=/etc/wireplumber/main.lua.d
-			mkdir -p "$Dir"
-			cp /usr/share/wireplumber/main.lua.d/50-alsa-config.lua "$Dir"
+			dir=/etc/wireplumber/main.lua.d
+			mkdir -p "$dir"
+			cp /usr/share/wireplumber/main.lua.d/50-alsa-config.lua "$dir"
 
-			Args='s/--\["session.suspend-timeout-seconds"\] = 5/\["session.suspend-timeout-seconds"\] = 0/'
-			sed -i "$Args" "$Dir"/50-alsa-config.lua
-			unset -v Dir Args
+			args='s/--\["session.suspend-timeout-seconds"\] = 5/\["session.suspend-timeout-seconds"\] = 0/'
+			sed -i "$args" "$dir"/50-alsa-config.lua
+			unset -v dir args
 		fi
 
 		# Better fonts.
-		Dir=/usr/share/fontconfig/conf.avail
-		ln -sf "$Dir"/{10-hinting-slight,10-sub-pixel-rgb,11-lcdfilter-default}.conf /etc/fonts/conf.d
+		dir=/usr/share/fontconfig/conf.avail
+		ln -sf "$dir"/{10-hinting-slight,10-sub-pixel-rgb,11-lcdfilter-default}.conf /etc/fonts/conf.d
 
 		# Use LUKS2 in udisks(8).
 		sed -i '/encryption/s/luks1/luks2/' /etc/udisks2/udisks2.conf
 	fi
 
-	unset GPU OptsPkgs OptsDeps Dir
+	unset gpu opt_pkg opt_dep dir
 
 	# zram setup script.
-	URL="$RepoURL"/extras/master/src/zram-setup.sh
-	File=/tmp/"${URL##*/}"
+	url=$raw_url/extras/master/src/zram-setup.sh
+	file=/tmp/"${url##*/}"
 
 	# Setup zram.
-	curl -sO "$URL"
-	bash "$File"
+	curl -so "$file" "$url"
+	bash "$file"
 
 	# Fix sulogin(8).
 	mkdir /etc/systemd/system/{emergency,rescue}.service.d
@@ -713,50 +715,59 @@ else
 	usbguard generate-policy > /etc/usbguard/rules.conf
 
 	# Set default mode to AC.
-	Args='/TLP_DEFAULT_MODE=AC/s/#//'
+	args='/TLP_DEFAULT_MODE=AC/s/#//'
 
 	# Load 'powersave' CPU governor module.
 	echo cpufreq_powersave > /etc/modules-load.d/cpufreq.conf
 
+	# Make tlp(1) manage CPU governor.
+	args+='; /CPU_SCALING_GOVERNOR/s/#//'
+
 	# Change CPU governor.
-	Args+='; /CPU_SCALING_GOVERNOR/s/#//'
-	if [[ $(< /sys/devices/system/cpu/cpu0/cpufreq/scaling_driver) == acpi-cpufreq ]]; then
-		Args+='; /CPU_SCALING_GOVERNOR_ON_AC/s/powersave/schedutil/'
+	driver=$(< /sys/devices/system/cpu/cpu0/cpufreq/scaling_driver)
+	if [[ $driver == acpi-cpufreq ]]; then
+		args+='; /CPU_SCALING_GOVERNOR_ON_AC/s/powersave/schedutil/'
 	fi
+	unset -v driver
 
 	# CPU boost.
-	Args+='; /CPU_BOOST/s/#//'
+	args+='; /CPU_BOOST/s/#//'
 
 	# Powersave stuff.
-	Args+='; /SCHED_POWERSAVE/s/#//'
-	Args+='; /SCHED_POWERSAVE_ON_AC/s/0/1/'
+	args+='; /SCHED_POWERSAVE/s/#//'
+	args+='; /SCHED_POWERSAVE_ON_AC/s/0/1/'
 
 	# Get disk-id.
-	while IFS=': ' read _ DiskID; do
-		AllDisk+=("$DiskID")
+	while IFS=': ' read _ disk_id; do
+		case $disk_id in
+			usb-*|ieee1394-*)
+				;;
+			*)
+				disk_arr+=("$disk_id") ;;
+		esac
 	done <<< "$(tlp diskid)"
 
 	# Disk management.
-	Args+="; s/#DISK_DEVICES=.*/DISK_DEVICES=\"${AllDisk[*]}\"/"
-	unset DiskID AllDisk
+	args+="; s/#DISK_DEVICES=.*/DISK_DEVICES=\"${disk_arr[*]}\"/"
+	unset disk_id disk_arr
 
 	# Runtime power management.
-	Args+='; /#AHCI_RUNTIME_PM_ON/s/#//'
-	Args+='; /AHCI_RUNTIME_PM_ON_AC/s/on/auto/'
+	args+='; /#AHCI_RUNTIME_PM_ON/s/#//'
+	args+='; /AHCI_RUNTIME_PM_ON_AC/s/on/auto/'
 
 	# Disable disk suspend.
-	Args+='; s/#AHCI_RUNTIME_PM_TIMEOUT=15/AHCI_RUNTIME_PM_TIMEOUT=0/'
+	args+='; s/#AHCI_RUNTIME_PM_TIMEOUT=15/AHCI_RUNTIME_PM_TIMEOUT=0/'
 
 	# Runtime power management for PCIe.
-	Args+='; /#RUNTIME_PM_ON/s/#//'
-	Args+='; /RUNTIME_PM_ON_AC/s/on/auto/'
+	args+='; /#RUNTIME_PM_ON/s/#//'
+	args+='; /RUNTIME_PM_ON_AC/s/on/auto/'
 
 	# Disable USB auto-suspend.
-	Args+='; s/#USB_AUTOSUSPEND=1/USB_AUTOSUSPEND=0/'
+	args+='; s/#USB_AUTOSUSPEND=1/USB_AUTOSUSPEND=0/'
 
 	# Configure tlp(1).
-	sed -i "$Args" /etc/tlp.conf
-	unset -v Disk Args
+	sed -i "$args" /etc/tlp.conf
+	unset -v disk args
 
 	# Symlink bash(1) to rbash(1).
 	ln -sT bash /usr/bin/rbash
@@ -793,13 +804,13 @@ else
 	printf '%s' "$REPLY" > /etc/systemd/system/macspoof@.service
 
 	# Detect network interface.
-	while IFS=': ' read Nr Ifname _; do
-		[[ $Nr == 2 ]] && break
+	while IFS=': ' read nr if_name _; do
+		[[ $nr == 2 ]] && break
 	done <<< "$(ip a)"
 
 	# Enable MAC address randomizer service.
-	systemctl enable macspoof@"$Ifname"
-	unset -v Nr Ifname
+	systemctl enable macspoof@"$if_name"
+	unset -v nr if_name
 
 	# Symlink /usr/local/bin to /usr/local/sbin.
 	rmdir /usr/local/sbin
@@ -817,9 +828,9 @@ else
 	sed -i '/write-cache/s/#//' /etc/apparmor/parser.conf
 
 	# Use the common Machine ID.
-	URL=https://raw.githubusercontent.com/Whonix/dist-base-files/master/etc/machine-id
-	curl -s "$URL" > /etc/machine-id
-	unset -v URL
+	url=https://raw.githubusercontent.com/Whonix/dist-base-files/master/etc/machine-id
+	curl -s "$url" > /etc/machine-id
+	unset -v url
 
 	# Additional entropy source.
 	echo 'jitterentropy_rng' > /usr/lib/modules-load.d/jitterentropy.conf
@@ -849,11 +860,11 @@ else
 	passwd -l root
 
 	# Define groups.
-	Groups=audit,doas,users,lp,wheel
+	groups=audit,doas,users,lp,wheel
 
-	# Groups that required if systemd(1) doesn't exists.
-	if [[ ! -f /usr/lib/systemd/systemd ]]; then
-		Groups+=,scanner,video,kvm,input,audio
+	# Groups that required if systemd-udevd(7) doesn't exist.
+	if [[ ! -f /lib/systemd/systemd-udevd ]]; then
+		groups+=,scanner,video,kvm,input,audio
 	fi
 
 	# Addition groups.
@@ -862,56 +873,53 @@ else
 
 	# Create a user.
 	while :; do
-		read -p 'Your username: ' Username
-		useradd -mG "$Groups" "$Username" && break
+		read -p 'Your username: ' username
+		useradd -mG "$groups" "$username" && break
 	done
 
-	if (( KeyFile != 1 )); then
-
-		Dir=/etc/systemd/system/getty@tty1.service.d
-		File="$Dir"/autologin.conf
+	if [[ $key_file == false ]]; then
+		dir=/etc/systemd/system/getty@tty1.service.d
+		file=$dir/autologin.conf
 
 		# Auto login
-		mkdir "$Dir"
-		read -rd '' <<-EOF
+		mkdir "$dir"
+		read -d '' <<-EOF
 			[Service]
 			Type=simple
 			ExecStart=
-			ExecStart=-/sbin/agetty -a $Username -i -J -n -N %I \$TERM
+			ExecStart=-/sbin/agetty -a $username -i -J -n -N %I \$TERM
 		EOF
 
-		printf '%s' "$REPLY" > "$File"
-		unset -v Dir File
-
+		printf '%s' "$REPLY" > "$file"
+		unset -v dir file
 	fi
 
 	# Set a password.
-	while :; do passwd "$Username" && break; done
-	unset -v Groups Username
+	while :; do passwd "$username" && break; done
+	unset -v groups username
 
 	# Specify vconsole.conf(5).
-	VConsole=/etc/vconsole.conf
+	vcon=/etc/vconsole.conf
 
-	if (( Grammak == 1 )); then
+	if [[ $grammak == true ]]; then
 		# My keymap script.
-		URL=https://github.com/ides3rt/grammak
-		Dir=/tmp/"${URL##*/}"
+		url=$git_url/grammak
+		dir=/tmp/${url##*/}
 
 		# Download my keymap.
-		git clone -q "$URL" "$Dir"
-		bash "$Dir"/installer.sh
+		git clone -q "$url" "$dir"
+		bash "$dir"/installer.sh
 
 		# Make it the default.
-		echo 'KEYMAP=grammak-iso' > "$VConsole"
-		unset -v URL Dir
+		echo 'KEYMAP=grammak-iso' > "$vcon"
+		unset -v url dir
 	fi
 
 	# If Terminus font is installed, then use it.
 	if pacman -Q terminus-font &>dev/null; then
-		echo 'FONT=ter-i18b' >> "$VConsole"
+		echo 'FONT=ter-i18b' >> "$vcon"
 	fi
-
-	unset -v VConsole
+	unset -v vcon
 
 	# Create initramfs again -- for mature.
 	mkinitcpio -P
