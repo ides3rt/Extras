@@ -6,17 +6,13 @@ trap 'echo Interrupt signal received; exit' SIGINT
 git_url=https://github.com/ides3rt
 raw_url=https://raw.githubusercontent.com/ides3rt
 
-# Use Grammak keymap or not.
-grammak=true
-
 # Use keyfile or not. Mind you that /boot is unencrypted.
 # If keyfile is disable, then auto-login will be enable.
-key_file=false
+use_keyfile=false
 
-# Encryption name.
-crypt_nm=luks0
+use_grammak=true
+crypt_name=luks0
 
-# Detect CPU.
 while read; do
 	if [[ $REPLY == *vendor_id* ]]; then
 		case $REPLY in
@@ -29,15 +25,11 @@ while read; do
 		break
 	fi
 done < /proc/cpuinfo
-
-# Number of processors.
 proc=$(( `nproc` + 1 ))
 
-# Configure makepkg.conf(5).
 curl -s "$raw_url"/setup/master/src/etc/makepkg.conf | \
 	sed -E "/MAKEFLAGS=/s/[[:digit:]]+/$proc/g" > /etc/makepkg.conf
 
-# Configure pacman.conf(5).
 curl -s "$raw_url"/setup/master/src/etc/pacman.conf | \
 	sed -E "/ParallelDownloads/s/[[:digit:]]+/$proc/g" > /etc/pacman.conf
 
@@ -47,24 +39,18 @@ read init_id _ <<< "$(ls -di /proc/1/root/.)"
 if (( root_id == init_id )); then
 	unset -v root_id init_id
 
-	if [[ $grammak == true ]]; then
-		# My keymap link.
+	if [[ $use_grammak == true ]]; then
 		url=$raw_url/grammak/master/src/grammak-iso.map
 		file=${url##*/}
 
-		# Download my keymap.
 		curl -sO "$url"
 		gzip "$file"
 
-		# Set my keymap.
 		loadkeys "$file".gz &>/dev/null
-
-		# Remove the keymap file.
 		rm -f "$file".gz
 		unset -v url file
 	fi
 
-	# Partition, format, and mount the drive.
 	PS3='Select your disk: '
 	select disk in $(lsblk -dne 7 -o PATH); do
 		[[ -z $disk ]] && continue
@@ -76,27 +62,25 @@ if (( root_id == init_id )); then
 		[[ $disk == *nvme* ]] && p=p
 		mkfs.fat -F 32 -n ESP "$disk$p"1
 
-		if [[ key_file == true ]]; then
-			crypt_fm=(
-				-h sha512 # Use SHA-512 instead
-				-S 1 # Add to keyslot 1 instead of slot 0
-				-i 5000 # Use itertime of 5 secs
-			)
+		if [[ $use_keyfile == true ]]; then
+			format_opt=(-h sha512 -S 1 -i 5000)
 		fi
 
 		while :; do
-			cryptsetup -v "${crypt_fm[@]}" luksFormat "$disk$p"2 && break
+			cryptsetup -v "${format_opt[@]}" luksFormat "$disk$p"2 && break
 		done
-		unset key_file crypt_fm
+		unset use_keyfile format_opt
 
 		if (( $(< /sys/block/"${disk#/dev/}"/queue/rotational) == 0 )); then
 			crypt_flags=(
-				--perf-no_read_workqueue # Disable read queue
-				--perf-no_write_workqueue # Disable write queue
-				--persistent # Make it the default option
+				# Disable read and write queue
+				# as it's only make sense for rotational disk.
+				--perf-no_read_workqueue
+				--perf-no_write_workqueue
+				--persistent
 			)
 
-			esp_flags=,discard # Enable 'discard'
+			esp_flags=,discard
 		fi
 
 		cryptsetup -v "${crypt_flags[@]}" open "$disk$p"2 "$crypt_nm" || exit 1
@@ -158,31 +142,28 @@ if (( root_id == init_id )); then
 		break
 	done
 
-	# Create dummy directories, so systemd(1) doesn't make random subvol.
+	# Create dummies , so systemd(1) doesn't make random subvol.
 	mkdir -p /mnt/var/lib/{machines,portables}
 	chmod 700 /mnt/var/lib/{machines,portables}
 
 	# Allow /usr/bin/sh installation for once.
 	sed -i 's,usr/bin/sh,,' /etc/pacman.conf
 
-	# Install base packages.
 	pacstrap /mnt base linux-hardened linux-hardened-headers \
 		linux-firmware neovim "$cpu"-ucode
 
-	# Just my OCD. Lol
 	chattr +C /mnt/{dev,run,tmp,sys,proc}
 
-	# Generate fstab(5).
 	args='/^#/d; s/[[:blank:]]+/ /g; s/rw,//; s/,ssd//; s/,subvolid=[[:digit:]]+//'
 	args+='; s#/@#@#; s#,subvol=@/\.snapshots/0/snapshot##'
 	args+='; /\/efi/{s/.$/1/; s/,code.*-ro//}; /\/var\/lib\/pacman/d'
 	genfstab -U /mnt | sed -E "$args" | cat -s > /mnt/etc/fstab
 	unset -v cpu args
 
-	# Make fstab(5) handle bind mount properly.
+	# genfstab(8) doesn't handle bind-mount properly,
+	# so we need to handle ourself.
 	echo '/state/var/lib/pacman /var/lib/pacman none bind 0 0' >> /mnt/etc/fstab
 
-	# Optimize fstab(5).
 	read -d '' <<-EOF
 
 		tmpfs /tmp tmpfs nosuid,nodev,noatime,size=6G 0 0
@@ -199,10 +180,8 @@ if (( root_id == init_id )); then
 
 	printf '%s' "$REPLY" >> /mnt/etc/fstab
 
-	# Mount /mnt/opt as tmpfs.
 	mount -t tmpfs -o nosuid,nodev,noatime,size=6G,mode=1777 tmpfs /mnt/opt
 
-	# Copy install script to /mnt.
 	if [[ -f $0 ]]; then
 		cp "$0" /mnt/opt
 		instll=${0##*/}
@@ -214,7 +193,6 @@ if (( root_id == init_id )); then
 		unset -v url
 	fi
 
-	# Run install script in chroot.
 	arch-chroot /mnt bash /opt/"$instll"
 	unset -v instll
 
@@ -222,14 +200,12 @@ if (( root_id == init_id )); then
 	# programs to work correctly with systemd-resolved(8).
 	rm -f /mnt/etc/resolv.conf
 
-	# Unmount /mnt.
 	umount -R /mnt
 	cryptsetup close "$crypt_nm"
 
 else
 	unset -v root_id init_id
 
-	# Set date and time.
 	while :; do
 		read -p 'Your timezone: ' Timezone
 		[[ -f /usr/share/zoneinfo/$timezone ]] && break
@@ -239,29 +215,23 @@ else
 	ln -sf /usr/share/zoneinfo/"$timezone" /etc/localtime
 	hwclock --systohc
 
-	# Set locale.
 	echo 'en_US.UTF-8 UTF-8' > /etc/locale.gen
 	locale-gen
 	echo 'LANG=en_US.UTF-8' > /etc/locale.conf
 
-	# Hostname.
 	read -p 'Your hostname: ' hostname
 	echo "$hostname" > /etc/hostname
 	unset -v hostname
 
-	# Set up localhost.
 	read -d '' <<-EOF
 
 		127.0.0.1 localhost
 		::1 localhost
 	EOF
-
 	printf '%s' "$REPLY" >> /etc/hosts
 
-	# Start networking services.
 	systemctl enable systemd-networkd systemd-resolved
 
-	# Set up dhcp.
 	read -d '' <<-EOF
 		[Match]
 		Name=*
@@ -281,13 +251,10 @@ else
 		[IPv6AcceptRA]
 		UseDNS=false
 	EOF
-
 	printf '%s' "$REPLY" > /etc/systemd/network/20-dhcp.network
 
-	# Get device source.
 	disk=$(lsblk -nso PATH "$(findmnt -nvo SOURCE /)" | tail -n 1)
 
-	# Detect if it NVMe or SATA device.
 	if [[ $disk == *nvme* ]]; then
 		modules='nvme nvme_core'
 		disk=${disk%p*}; p=p
@@ -296,7 +263,6 @@ else
 		disk=${disk%%[1-9]}
 	fi
 
-	# Remove fallback preset.
 	read -d '' <<-EOF
 		# mkinitcpio preset file for the 'linux-hardened' package.
 
@@ -313,62 +279,35 @@ else
 		fallback_efi_image="/efi/EFI/ARCHX64/linux-hardended-fallback.efi"
 		fallback_options="-S autodetect"
 	EOF
-
 	printf '%s' "$REPLY" > /etc/mkinitcpio.d/linux-hardened.preset
 
-	# Set up initramfs configuration file.
 	read -d '' <<-EOF
 		MODULES=($modules btrfs)
 		BINARIES=()
-		FILES=(/etc/cryptsetup-keys.d/$crypt_nm.key)
+		FILES=(/etc/cryptsetup-keys.d/$crypt_name.key)
 		HOOKS=(systemd autodetect modconf keyboard sd-vconsole sd-encrypt)
 		COMPRESSION="lz4"
 		COMPRESSION_OPTIONS=(-12 --favor-decSpeed)
 	EOF
 
-	if [[ $key_file == false ]]; then
+	if [[ $use_keyfile == false ]]; then
 		REPLY=${REPLY/FILES=(*.key)/FILES=()}
 	fi
 
 	printf '%s' "$REPLY" > /etc/mkinitcpio.conf
 
-	# Create directories.
 	mkdir -p /efi/EFI/ARCHX64
-
-	# Remove fallback image.
 	rm -f /boot/initramfs-linux-hardened-fallback.img
 
-	add_pkg=(
-		btrfs-progs # BTRFS support
-		efibootmgr # UEFI manager
-		dosfstools # FAT and it's derivative support
-		moreutils # Unix tools
-		autoconf automake bc bison fakeroot flex pkgconf # Development tools
-		clang lld # Better C complier
-		fcron # Cron tools
-		opendoas # Privileges elevator
-		ufw # Firewall
-		apparmor # Applications sandbox
-		usbguard # Protect from BadUSB
-		man-db # An interface to system manuals
-		man-pages # Linux manuals
-		dash # Faster sh(1)
-		dbus-broker # Better dbus(1)
-		jitterentropy # Additional entropy source
-		macchanger # MAC address spoof
-		tlp # Power-saving tools
-	)
-
-	# Install additional packages.
-	pacman -S --noconfirm "${add_pkg[@]}"
+	pacman -S --noconfirm btrfs-progs efibootmgr dosfstools moreutils autoconf \
+		automake bc bison fakeroot flex pkgconf clang lld fcron opendoas ufw \
+		apparmor usbguard man-db man-pages dash dbus-broker jitterentropy tlp \
+		macchanger
 	pacman -S --noconfirm --asdeps llvm
-	unset add_pkg
 
-	# Find the rootfs UUID.
 	root_id=$(lsblk -dno UUID "$disk$p"2)
 	mapper_id=$(findmnt -no UUID /)
 
-	# Options for LUKS.
 	echo "$crypt_nm UUID=$root_id none password-echo=no" > /etc/crypttab.initramfs
 	chmod 600 /etc/crypttab.initramfs
 
@@ -474,28 +413,23 @@ else
 	kernel+=' zswap.enabled=0'
 
 	echo "$kernel" > /etc/kernel/cmdline
-
-	# Install bootloader to UEFI.
 	efibootmgr --disk "$disk" --part 1 --create \
 		--label 'Arch Linux' \
 		--loader '\EFI\ARCHX64\linux-hardended.efi'
 
-	if [[ $key_file == true ]]; then
-		# Create directory for keyfile to live in.
+	if [[ $use_keyfile == true ]]; then
 		mkdir /etc/cryptsetup-keys.d
 		chmod 700 /etc/cryptsetup-keys.d
 
-		# Create a keyfile to auto mount LUKS device.
 		dd bs=8k count=1 if=/dev/urandom iflag=fullblock \
-			of=/etc/cryptsetup-keys.d/"$crypt_nm".key
-		chmod 600 /etc/cryptsetup-keys.d/"$crypt_nm".key
+			of=/etc/cryptsetup-keys.d/"$crypt_name".key
+		chmod 600 /etc/cryptsetup-keys.d/"$crypt_name".key
 
-		# Add a keyfile.
 		cryptsetup -v -h sha256 -S 0 -i 1000 luksAddKey \
-			"$disk$p"2 /etc/cryptsetup-keys.d/"$crypt_nm".key
+			"$disk$p"2 /etc/cryptsetup-keys.d/"$crypt_name".key
 	fi
 
-	unset -v cpu crypt_nm disk p modules root_id mapper_id kernel
+	unset -v cpu crypt_name disk p modules root_id mapper_id kernel
 
 	# Detect a GPU driver.
 	while read; do
@@ -517,40 +451,31 @@ else
 	base_url=$raw_url/setup/master/src
 
 	(
-		# Setup /etc/modprobe.d
 		dir_url=$base_url/etc/modprobe.d
 		cd "${dir_url#$base_url}"
 
-		# 30-security.conf
 		curl -sO "$dir_url"/30-security.conf
 
-		# 50-nvidia.conf
 		if [[ $gpu == *nvidia* ]]; then
 			curl -sO "$dir_url"/50-nvidia.conf
 		fi
 	)
 
 	(
-		# Setup /etc/sysctl.d
 		dir_url=$base_url/etc/sysctl.d
 		cd "${dir_url#$base_url}"
 
-		# 30-security.conf
 		curl -sO "$dir_url"/30-security.conf
 
-		# 50-printk.conf
 		curl -sO "$dir_url"/50-printk.conf
 	) && > /etc/ufw/sysctl.conf
 
 	(
-		# Setup /etc/udev/rules.d
 		dir_url=$base_url/etc/udev/rules.d
 		cd "${dir_url#$base_url}"
 
-		# 60-ioschedulers.rules
 		curl -sO "$dir_url"/60-ioschedulers.rules
 
-		# 70-nvidia.rules
 		if [[ $gpu == *nvidia* ]]; then
 			curl -sO "$dir_url"/70-nvidia.rules
 		fi
@@ -558,107 +483,54 @@ else
 
 	unset -v base_url
 
-	opt_pkg=(
-		git wget rsync # Downloading tools
-		virt-manager # Virtual machine
-		htop # System monitor
-		fzf # Command-line fuzzy finder
-		tmux # Terminal multiplexer
-		zip unzip # Additional compression algorithms
-		pigz p7zip pbzip2 # Faster compression algorithms
-		rustup sccache # Rust development
-		arch-audit # Security checks in Arch Linux packages
-		arch-wiki-lite # Arch Wiki
-		archiso # Create Arch ISO
-		udisks2 # Mount drive via polkit(8)
-		exfatprogs # exFAT support
-		flatpak # Flatpak
-		terminus-font # Better TTY font
-		pwgen # Password generator
-		xorg-server xorg-xrandr # Xorg
-		xorg-xinit # Display manager
-		xdg-user-dirs # Manage XDG dirs
-		arc-solid-gtk-theme papirus-icon-theme # GTK themes
-		redshift # Eyes saver
-		bspwm sxhkd xorg-xsetroot # bspwm(1) essentials
-		rxvt-unicode # Terminal Emulater
-		rofi # Programs launcher
-		pipewire # Sound server
-		dunst # Nofication daemon
-		picom # Compositer
-		feh # Wallpaper/Image viewer
-		sxiv # Image viewer
-		maim xdotool # Screenshot tools
-		perl-image-exiftool # Image's metadata tools
-		firefox-developer-edition links # Browsers
-		libreoffice # Office programs
-		pinta # Image editor
-		zathura # Document viewer
-		mpv # Media player
-		neofetch cowsay cmatrix figlet # Useless staff 1
-		sl fortune-mod lolcat doge # Useless staff 2
-	)
-
-	opt_dep=(
-		qemu ebtables dnsmasq # Optional deps for libvirtd(8)
-		edk2-ovmf # EFI support in Archiso
-		lsof strace # Better htop(1)
-		dialog # Interactive-menu in wiki-search(1)
-		bash-completion # Better completion in Bash
-		memcached # Cache support in Rust
-		libnotify # Send notification
-		pipewire-pulse # Pulseaudio support in Pipewire
-		realtime-privileges rtkit # Realtime support in Pipewire
-		yt-dlp # Stream YT into mpv(1) support
-		aria2 # Faster yt-dlp(1)
-		xclip # X-server clipboard in support nvim(1)
-		zathura-pdf-mupdf # PDF support zathura(1)
-		noto-fonts-emoji # Extras emoji
-	)
-
 	printf '%s\n' "Do you wanna dl opt-pkgs for author's dotfiles (iDes3rt)?"
 	while :; do
 		read -p '[y/N]: '
 		case ${REPLY,,} in
 			yes|y)
-				# Install pre-dependencies, so it doesn't prompt user.
+				# Pre-install dependencies, so it doesn't prompt
+				# user what to be chosen.
 				pacman -S --noconfirm --asdeps pipewire-jack \
 					wireplumber noto-fonts
 
-				# Install optional packages.
-				pacman -S --noconfirm "$gpu" "${opt_pkg[@]}"
+				pacman -S --noconfirm "$gpu" git wget rsync virt-manager htop \
+					fzf tmux zip unzip pigz p7zip pbzip2 rustup sccache \
+					arch-audit arch-wiki-lite archiso udisks2 exfatprogs \
+					flatpak terminus-font pwgen xorg-server xorg-xrandr \
+					xorg-xinit xdg-user-dirs arc-solid-gtk-theme \
+					papirus-icon-theme redshift bspwm sxhkd xorg-xsetroot \
+					rxvt-unicode rofi pipewire dunst picom feh sxiv maim \
+					xdotool perl-image-exiftool firefox-developer-edition \
+					links libreoffice pinta zathura mpv neofetch cowsay \
+					cmatrix figlet sl fortune-mod lolcat doge
 
-				# Install optional dependencies.
-				yes | pacman -S --asdeps "${opt_dep[@]}"
+				# Don't use --noconfirm as there're confilt packages and
+				# pacman(8) by default will answer 'no', instead of 'yes'.
+				yes | pacman -S --asdeps qemu ebtables dnsmasq edk2-ovmf \
+					lsof strace dialog bash-completion memcached libnotify \
+					pipewire-pulse realtime-privileges rtkit yt-dlp aria2 \
+					xclip zathura-pdf-mupdf noto-fonts-emoji
 
-				# Enable services.
 				systemctl enable libvirtd.socket
 				systemctl --global enable pipewire-pulse
 
-				# Make X.Org run rootless by default.
+				ln -s run/media /
 				echo 'needs_root_rights = no' > /etc/X11/Xwrapper.config
 
-				# Flatpak.
 				flatpak remote-add --if-not-exists flathub \
 					https://flathub.org/repo/flathub.flatpakrepo
 				flatpak update
 
-				# Create symlinks.
-				ln -s run/media /
-
-				# Configure pipewire(1).
 				dir=/etc/wireplumber/main.lua.d
 				mkdir -p "$dir"
 				cp /usr/share/wireplumber/main.lua.d/50-alsa-config.lua "$dir"
 				sed -i '/suspend-timeout/{s/--//; s/5/0/}' "$dir"/*
 
-				# Better fonts.
 				dir=/usr/share/fontconfig/conf.avail
 				ln -s "$dir"/1{0-sub-pixel-rgb,1-lcdfilter-default}.conf \
 					/etc/fonts/conf.d
 				unset -v dir
 
-				# Use LUKS2 in udisks(8).
 				sed -i '/encryption/s/luks1/luks2/' /etc/udisks2/udisks2.conf
 				break ;;
 
@@ -669,45 +541,38 @@ else
 				printf '%s\n' "Err: $REPLY: invaild reply..." ;;
 		esac
 	done
+	unset -v gpu
 
-	unset gpu opt_pkg opt_dep
-
-	# zram setup script.
 	url=$raw_url/extras/master/src/zram-setup.sh
 	file=/tmp/${url##*/}
 
-	# Setup zram.
 	curl -so "$file" "$url"
 	bash "$file"
 
-	# systemd(1) services directory.
 	systemd_dir=/etc/systemd/system
 
-	# Fix sulogin(8).
+	# Force sulogin(8) to login as root.
+	# This is required as we disable root account.
 	mkdir "$systemd_dir"/{emergency,rescue}.service.d
 	read -d '' <<-EOF
 		[Service]
 		Environment=SYSTEMD_SULOGIN_FORCE=1
 	EOF
-
 	printf '%s' "$REPLY" > "$systemd_dir"/emergency.service.d/sulogin.conf
 	printf '%s' "$REPLY" > "$systemd_dir"/rescue.service.d/sulogin.conf
 
 	# Allow systemd-logind(8) to see /proc.
-	dir="$systemd_dir"/systemd-logind.service.d
-	mkdir "$dir"
+	# This is only useful when 'gid=proc,hidepid=2' is used in fstab(5).
+	mkdir "$systemd_dir"/systemd-logind.service.d
 	read -d '' <<-EOF
 		[Service]
 		SupplementaryGroups=proc
 	EOF
+	printf '%s' "$REPLY" > "$systemd_dir"/systemd-logind.service.d/hidepid.conf
+	unset -v systemd_dir
 
-	printf '%s' "$REPLY" > "$dir"/hidepid.conf
-	unset -v systemd_dir dir
-
-	# Limit /run/user/$UID size to 1 GiB.
 	sed -i '/RuntimeDirectorySize/{s/#//; s/10%/1G/}' /etc/systemd/logind.conf
 
-	# Setup tmpfiles.
 	read -d '' <<-EOF
 		# See tmpfiles.d(5) for details.
 
@@ -725,28 +590,18 @@ else
 		x /var/tmp/systemd-private-*
 		X /var/tmp/systemd-private-*/tmp
 	EOF
-
 	printf '%s' "$REPLY" > /etc/tmpfiles.d/tmp.conf
 
-	# Generate usbguard(1) rules.
 	usbguard generate-policy > /etc/usbguard/rules.conf
 
-	# Set default mode to AC.
-	args='/TLP_DEFAULT_MODE=AC/s/#//'
-
-	# Load 'powersave' CPU governor module.
+	# Load 'powersave' CPU governor module as Arch Linux unload it by default.
 	echo 'cpufreq_powersave' > /etc/modules-load.d/cpufreq.conf
 
-	# Make tlp(1) manage CPU governor.
+	args='/TLP_DEFAULT_MODE=AC/s/#//'
 	args+='; /SCALING_GOVERNOR/{s/#//; /AC/s/powersave/schedutil/}'
-
-	# CPU boost.
 	args+='; /CPU_BOOST/s/#//'
-
-	# Powersave stuff.
 	args+='; /SCHED_POWERSAVE/{s/#//; s/0/1/}'
 
-	# Get disk-id.
 	while IFS=': ' read _ disk_id; do
 		case $disk_id in
 			usb-*|ieee1394-*)
@@ -756,36 +611,24 @@ else
 		esac
 	done <<< "$(tlp diskid)"
 
-	# Disk management.
 	args+="; /DISK_DEVICES/{s/#//; s/=.*/=\"${disk_arr[*]}\"/}"
 	unset disk_id disk_arr
 
-	# Runtime power management.
 	args+='; /RUNTIME_PM_ON/{s/#//; s/on/auto/}'
-
-	# Disable disk suspend.
 	args+='; /AHCI_RUNTIME_PM_TIMEOUT/{s/#//; s/15/0/}'
-
-	# Disable USB auto-suspend.
 	args+='; /USB_AUTOSUSPEND/{s/#//; s/1/0/}'
 
-	# Configure tlp(1).
 	sed -i "$args" /etc/tlp.conf
 	unset -v args
 
-	# Symlink bash(1) to rbash(1).
 	ln -sT bash /usr/bin/rbash
-
-	# Symlink dash(1) to sh(1).
 	ln -sfT dash /usr/bin/sh
 
-	# Enable services.
 	ufw enable
 	systemctl disable dbus
 	systemctl enable apparmor auditd dbus-broker fcron tlp ufw usbguard
 	systemctl --global enable dbus-broker
 
-	# Create MAC address randomizer service.
 	read -d '' <<-EOF
 		[Unit]
 		Description=Macchanger on %I
@@ -804,29 +647,23 @@ else
 		[Install]
 		WantedBy=multi-user.target
 	EOF
-
 	printf '%s' "$REPLY" > /etc/systemd/system/macspoof@.service
 
-	# Detect network interface.
 	while IFS=': ' read nr if_name _; do
 		[[ $nr == 2 ]] && break
 	done <<< "$(ip a)"
 
-	# Enable MAC address randomizer service.
 	systemctl enable macspoof@"$if_name"
 	unset -v nr if_name
 
-	# Symlink /usr/local/sbin to /usr/local/bin.
 	rmdir /usr/local/sbin
 	ln -s bin /usr/local/sbin
 
-	# Change doas.conf(5) permissions.
 	groupadd -r doas
 	echo 'permit persist :doas' > /etc/doas.conf
 	chmod 640 /etc/doas.conf
 	chown :doas /etc/doas.conf
 
-	# Enable logging and enable caching for Apparmor.
 	groupadd -r audit
 	sed -i '/log_group/s/root/audit/' /etc/audit/auditd.conf
 	sed -i '/write-cache/s/#//' /etc/apparmor/parser.conf
@@ -836,34 +673,21 @@ else
 	curl -s "$url" > /etc/machine-id
 	unset -v url
 
-	# Additional entropy source.
 	echo 'jitterentropy_rng' > /usr/lib/modules-load.d/jitterentropy.conf
-
-	# Required to be in wheel group for su(1).
 	sed -i '/required/s/#//' /etc/pam.d/su{,-l}
-
-	# Disallow null password.
 	sed -i 's/ nullok//g' /etc/pam.d/system-auth
-
-	# Make store password more secure.
 	sed -i '/^password/s/$/& rounds=65536/' /etc/pam.d/passwd
-
-	# Disable core dump.
 	echo '* hard core 0' >> /etc/security/limits.conf
 	sed -i '/Storage/{s/#//; s/external/none/}' /etc/systemd/coredump.conf
 
-	# Disallow root to login to TTY.
 	read -d '' <<-EOF
 		# File which lists terminals from which root can log in.
 		# See securetty(5) for details.
 	EOF
-
 	printf '%s' "$REPLY" > /etc/securetty
 
-	# Lock root account.
 	passwd -l root
 
-	# Define groups.
 	groups=audit,doas,users,lp,wheel
 
 	# Groups that required if systemd-udevd(7) doesn't exist.
@@ -871,17 +695,15 @@ else
 		groups+=,scanner,video,kvm,input,audio
 	fi
 
-	# Addition groups.
 	pacman -Q libvirt &>/dev/null && Groups+=,libvirt
 	pacman -Q realtime-privileges &>/dev/null && Groups+=,realtime
 
-	# Create a user.
 	while :; do
 		read -p 'Your username: ' username
 		useradd -mG "$groups" "$username" && break
 	done
 
-	if [[ $key_file == false ]]; then
+	if [[ $use_keyfile == false ]]; then
 		dir=/etc/systemd/system/getty@tty1.service.d
 
 		# Auto login
@@ -897,40 +719,30 @@ else
 		unset -v dir
 	fi
 
-	# Set a password.
-	while :; do passwd "$username" && break; done
+	while :; do
+		passwd "$username" && break
+	done
 	unset -v groups username
 
-	# Specify vconsole.conf(5).
 	vcon=/etc/vconsole.conf
 
-	if [[ $grammak == true ]]; then
-		# My keymap script.
+	if [[ $use_grammak == true ]]; then
 		url=$git_url/grammak
 		dir=/tmp/${url##*/}
 
-		# Download my keymap.
 		git clone -q "$url" "$dir"
 		bash "$dir"/installer.sh
 
-		# Make it the default.
 		echo 'KEYMAP=grammak-iso' > "$vcon"
 		unset -v url dir
 	fi
 
-	# If Terminus font is installed, then use it.
 	if pacman -Q terminus-font &>dev/null; then
 		echo 'FONT=ter-i18b' >> "$vcon"
 	fi
 	unset -v vcon
 
-	# Create initramfs again -- for mature.
 	mkinitcpio -P
-
-	# Use 700 for newly create files and clean $PATH.
 	sed -i 's/022/077/; /\/sbin/d' /etc/profile
-
-	# Clean PATH.
 	sed -i 's#/usr/local/sbin:##' /etc/login.defs
-
 fi
