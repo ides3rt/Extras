@@ -34,18 +34,18 @@ done < /proc/cpuinfo
 proc=$(( `nproc` + 1 ))
 
 # Configure makepkg.conf(5).
-url=$raw_url/setup/master/src/etc/makepkg.conf
-curl -s "$url" | sed "/MAKEFLAGS=/s/[[:digit:]]/$proc/g" > /etc/makepkg.conf
+curl -s "$raw_url"/setup/master/src/etc/makepkg.conf | \
+	sed -E "/MAKEFLAGS=/s/[[:digit:]]+/$proc/g" > /etc/makepkg.conf
 
 # Configure pacman.conf(5).
-url=$raw_url/setup/master/src/etc/pacman.conf
-curl -s "$url" | sed "/ParallelDownloads/s/[[:digit:]]/$proc/g" > /etc/pacman.conf
-unset -v proc
+curl -s "$raw_url"/setup/master/src/etc/pacman.conf | \
+	sed -E "/ParallelDownloads/s/[[:digit:]]+/$proc/g" > /etc/pacman.conf
 
 read root_id _ <<< "$(ls -di /)"
 read init_id _ <<< "$(ls -di /proc/1/root/.)"
 
 if (( root_id == init_id )); then
+	unset -v root_id init_id
 
 	if [[ $grammak == true ]]; then
 		# My keymap link.
@@ -89,9 +89,7 @@ if (( root_id == init_id )); then
 		done
 		unset key_file crypt_fm
 
-		read rotation < /sys/block/"${disk#/dev/}"/queue/rotational
-
-		if (( rotation == 0 )); then
+		if (( $(< /sys/block/"${disk#/dev/}"/queue/rotational) == 0 )); then
 			crypt_flags=(
 				--perf-no_read_workqueue # Disable read queue
 				--perf-no_write_workqueue # Disable write queue
@@ -100,7 +98,6 @@ if (( root_id == init_id )); then
 
 			esp_flags=,discard # Enable 'discard'
 		fi
-		unset -v rotation
 
 		cryptsetup -v "${crypt_flags[@]}" open "$disk$p"2 "$crypt_nm" || exit 1
 		unset crypt_flags
@@ -142,14 +139,14 @@ if (( root_id == init_id )); then
 		chmod 700 /mnt/{boot,efi,root}
 
 		mount -o nosuid,nodev,noexec,noatime,fmask=0177,dmask=0077"$esp_flags" "$disk$p"1 /mnt/efi
-		mount -o nodev,noatime,compress-force=zstd:1,space_cache=v2,subvol=@/boot "$mapper" /mnt/boot
-		mount -o nodev,noatime,compress-force=zstd:1,space_cache=v2,subvol=@/home "$mapper" /mnt/home
-		mount -o nodev,noatime,compress-force=zstd:1,space_cache=v2,subvol=@/opt "$mapper" /mnt/opt
-		mount -o nodev,noatime,compress-force=zstd:1,space_cache=v2,subvol=@/root "$mapper" /mnt/root
-		mount -o nodev,noatime,compress-force=zstd:1,space_cache=v2,subvol=@/srv "$mapper" /mnt/srv
-		mount -o nodev,noatime,compress-force=zstd:1,space_cache=v2,subvol=@/usr/local "$mapper" /mnt/usr/local
-		mount -o nodev,noatime,compress-force=zstd:1,space_cache=v2,subvol=@/var "$mapper" /mnt/var
-		mount -o nodev,noatime,compress-force=zstd:1,space_cache=v2,subvol=@/.snapshots "$mapper" /mnt/.snapshots
+		mount -o nodev,noatime,subvol=@/boot "$mapper" /mnt/boot
+		mount -o nodev,noatime,subvol=@/home "$mapper" /mnt/home
+		mount -o nodev,noatime,subvol=@/opt "$mapper" /mnt/opt
+		mount -o nodev,noatime,subvol=@/root "$mapper" /mnt/root
+		mount -o nodev,noatime,subvol=@/srv "$mapper" /mnt/srv
+		mount -o nodev,noatime,subvol=@/usr/local "$mapper" /mnt/usr/local
+		mount -o nodev,noatime,subvol=@/var "$mapper" /mnt/var
+		mount -o nodev,noatime,subvol=@/.snapshots "$mapper" /mnt/.snapshots
 
 		mkdir -p /mnt/state/var
 		chattr +C /mnt/state/var
@@ -165,16 +162,20 @@ if (( root_id == init_id )); then
 	mkdir -p /mnt/var/lib/{machines,portables}
 	chmod 700 /mnt/var/lib/{machines,portables}
 
-	# Install base packages.
+	# Allow /usr/bin/sh installation for once.
 	sed -i 's,usr/bin/sh,,' /etc/pacman.conf
-	pacstrap /mnt base linux-hardened linux-hardened-headers linux-firmware neovim "$cpu"-ucode
-	chattr +C /mnt/tmp
+
+	# Install base packages.
+	pacstrap /mnt base linux-hardened linux-hardened-headers \
+		linux-firmware neovim "$cpu"-ucode
+
+	# Just my OCD. Lol
+	chattr +C /mnt/{dev,run,tmp,sys,proc}
 
 	# Generate fstab(5).
 	args='/^#/d; s/[[:blank:]]+/ /g; s/rw,//; s/,ssd//; s/,subvolid=[[:digit:]]+//'
-	args+='; s#/@#@#; s#,subvol=@/\.snapshots/0/snapshot##; /\/efi/s/.$/1/'
-	args+='; s/,codepage=437,iocharset=ascii,shortname=mixed,utf8,errors=remount-ro//'
-	args+='; /\/var\/lib\/pacman/d'
+	args+='; s#/@#@#; s#,subvol=@/\.snapshots/0/snapshot##'
+	args+='; /\/efi/{s/.$/1/; s/,code.*-ro//}; /\/var\/lib\/pacman/d'
 	genfstab -U /mnt | sed -E "$args" | cat -s > /mnt/etc/fstab
 	unset -v cpu args
 
@@ -190,7 +191,7 @@ if (( root_id == init_id )); then
 
 		tmpfs /run tmpfs nosuid,nodev,noexec,size=1G 0 0
 
-		devtmpfs /dev devtmpfs nosuid,noexec,size=0k 0 0
+		devtmpfs /dev devtmpfs nosuid,dev,noexec,size=0k 0 0
 
 		proc /proc procfs nosuid,nodev,noexec,gid=proc,hidepid=2 0 0
 
@@ -226,6 +227,7 @@ if (( root_id == init_id )); then
 	cryptsetup close "$crypt_nm"
 
 else
+	unset -v root_id init_id
 
 	# Set date and time.
 	while :; do
@@ -243,7 +245,7 @@ else
 	echo 'LANG=en_US.UTF-8' > /etc/locale.conf
 
 	# Hostname.
-	read -p 'Your hostname: ' Hostname
+	read -p 'Your hostname: ' hostname
 	echo "$hostname" > /etc/hostname
 	unset -v hostname
 
@@ -325,7 +327,7 @@ else
 	EOF
 
 	if [[ $key_file == false ]]; then
-		REPLY="${REPLY/\/etc\/cryptsetup-keys.d\/$crypt_nm.key}"
+		REPLY=${REPLY/FILES=(*.key)/FILES=()}
 	fi
 
 	printf '%s' "$REPLY" > /etc/mkinitcpio.conf
@@ -484,11 +486,13 @@ else
 		chmod 700 /etc/cryptsetup-keys.d
 
 		# Create a keyfile to auto mount LUKS device.
-		dd bs=8k count=1 if=/dev/urandom of=/etc/cryptsetup-keys.d/"$crypt_nm".key iflag=fullblock &>/dev/null
+		dd bs=8k count=1 if=/dev/urandom iflag=fullblock \
+			of=/etc/cryptsetup-keys.d/"$crypt_nm".key
 		chmod 600 /etc/cryptsetup-keys.d/"$crypt_nm".key
 
 		# Add a keyfile.
-		cryptsetup -v -h sha256 -S 0 -i 1000 luksAddKey "$disk$p"2 /etc/cryptsetup-keys.d/"$crypt_nm".key
+		cryptsetup -v -h sha256 -S 0 -i 1000 luksAddKey \
+			"$disk$p"2 /etc/cryptsetup-keys.d/"$crypt_nm".key
 	fi
 
 	unset -v cpu crypt_nm disk p modules root_id mapper_id kernel
@@ -518,13 +522,11 @@ else
 		cd "${dir_url#$base_url}"
 
 		# 30-security.conf
-		url=$dir_url/30-security.conf
-		curl -sO "$url"
+		curl -sO "$dir_url"/30-security.conf
 
 		# 50-nvidia.conf
 		if [[ $gpu == *nvidia* ]]; then
-			url=$dir_url/50-nvidia.conf
-			curl -sO "$url"
+			curl -sO "$dir_url"/50-nvidia.conf
 		fi
 	)
 
@@ -534,12 +536,10 @@ else
 		cd "${dir_url#$base_url}"
 
 		# 30-security.conf
-		url=$dir_url/30-security.conf
-		curl -sO "$url"
+		curl -sO "$dir_url"/30-security.conf
 
 		# 50-printk.conf
-		url=$dir_url/50-printk.conf
-		curl -sO "$url"
+		curl -sO "$dir_url"/50-printk.conf
 	) && > /etc/ufw/sysctl.conf
 
 	(
@@ -548,13 +548,11 @@ else
 		cd "${dir_url#$base_url}"
 
 		# 60-ioschedulers.rules
-		url=$dir_url/60-ioschedulers.rules
-		curl -sO "$url"
+		curl -sO "$dir_url"/60-ioschedulers.rules
 
 		# 70-nvidia.rules
 		if [[ $gpu == *nvidia* ]]; then
-			url=$dir_url/70-nvidia.rules
-			curl -sO "$url"
+			curl -sO "$dir_url"/70-nvidia.rules
 		fi
 	)
 
@@ -567,11 +565,11 @@ else
 		fzf # Command-line fuzzy finder
 		tmux # Terminal multiplexer
 		zip unzip # Additional compression algorithms
-		pigz p7zip pbzip2 # Faster compression
+		pigz p7zip pbzip2 # Faster compression algorithms
 		rustup sccache # Rust development
-		arch-audit # Security checks in Arch Linux pkgs
+		arch-audit # Security checks in Arch Linux packages
 		arch-wiki-lite # Arch Wiki
-		archiso # Create Arch iso
+		archiso # Create Arch ISO
 		udisks2 # Mount drive via polkit(8)
 		exfatprogs # exFAT support
 		flatpak # Flatpak
@@ -597,7 +595,8 @@ else
 		pinta # Image editor
 		zathura # Document viewer
 		mpv # Media player
-		neofetch cowsay cmatrix figlet sl fortune-mod lolcat doge # Useless staff
+		neofetch cowsay cmatrix figlet # Useless staff 1
+		sl fortune-mod lolcat doge # Useless staff 2
 	)
 
 	opt_dep=(
@@ -614,81 +613,99 @@ else
 		aria2 # Faster yt-dlp(1)
 		xclip # X-server clipboard in support nvim(1)
 		zathura-pdf-mupdf # PDF support zathura(1)
+		noto-fonts-emoji # Extras emoji
 	)
 
-	# Install "optional" packages.
-	pacman -S "$gpu" "${opt_pkg[@]}"
+	printf '%s\n' "Do you wanna dl opt-pkgs for author's dotfiles (iDes3rt)?"
+	while :; do
+		read -p '[y/N]: '
+		case ${REPLY,,} in
+			yes|y)
+				# Install pre-dependencies, so it doesn't prompt user.
+				pacman -S --noconfirm --asdeps pipewire-jack \
+					wireplumber noto-fonts
 
-	if (( $? == 0 )); then
-		pacman -Q noto-fonts &>/dev/null && opt_dep+=( noto-fonts-emoji )
+				# Install optional packages.
+				pacman -S --noconfirm "$gpu" "${opt_pkg[@]}"
 
-		# Install optional dependencies.
-		yes | pacman -S --asdeps "${opt_dep[@]}"
+				# Install optional dependencies.
+				yes | pacman -S --asdeps "${opt_dep[@]}"
 
-		# Enable services.
-		systemctl enable libvirtd.socket
-		systemctl --global enable pipewire-pulse
+				# Enable services.
+				systemctl enable libvirtd.socket
+				systemctl --global enable pipewire-pulse
 
-		# Make X.Org run rootless by default.
-		echo 'needs_root_rights = no' > /etc/X11/Xwrapper.config
+				# Make X.Org run rootless by default.
+				echo 'needs_root_rights = no' > /etc/X11/Xwrapper.config
 
-		# Flatpak.
-		flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
-		flatpak update
+				# Flatpak.
+				flatpak remote-add --if-not-exists flathub \
+					https://flathub.org/repo/flathub.flatpakrepo
+				flatpak update
 
-		# Create symlinks.
-		ln -s run/media /
+				# Create symlinks.
+				ln -s run/media /
 
-		# Configure pipewire(1).
-		if pacman -Q wireplumber &>/dev/null; then
-			dir=/etc/wireplumber/main.lua.d
-			mkdir -p "$dir"
-			cp /usr/share/wireplumber/main.lua.d/50-alsa-config.lua "$dir"
+				# Configure pipewire(1).
+				dir=/etc/wireplumber/main.lua.d
+				mkdir -p "$dir"
+				cp /usr/share/wireplumber/main.lua.d/50-alsa-config.lua "$dir"
+				sed -i '/suspend-timeout/{s/--//; s/5/0/}' "$dir"/*
 
-			args='s/--\["session.suspend-timeout-seconds"\] = 5/\["session.suspend-timeout-seconds"\] = 0/'
-			sed -i "$args" "$dir"/50-alsa-config.lua
-			unset -v dir args
-		fi
+				# Better fonts.
+				dir=/usr/share/fontconfig/conf.avail
+				ln -s "$dir"/1{0-sub-pixel-rgb,1-lcdfilter-default}.conf \
+					/etc/fonts/conf.d
+				unset -v dir
 
-		# Better fonts.
-		dir=/usr/share/fontconfig/conf.avail
-		ln -sf "$dir"/{10-hinting-slight,10-sub-pixel-rgb,11-lcdfilter-default}.conf /etc/fonts/conf.d
+				# Use LUKS2 in udisks(8).
+				sed -i '/encryption/s/luks1/luks2/' /etc/udisks2/udisks2.conf
+				break ;;
 
-		# Use LUKS2 in udisks(8).
-		sed -i '/encryption/s/luks1/luks2/' /etc/udisks2/udisks2.conf
-	fi
+			no|n|'')
+				break ;;
 
-	unset gpu opt_pkg opt_dep dir
+			*)
+				printf '%s\n' "Err: $REPLY: invaild reply..." ;;
+		esac
+	done
+
+	unset gpu opt_pkg opt_dep
 
 	# zram setup script.
 	url=$raw_url/extras/master/src/zram-setup.sh
-	file=/tmp/"${url##*/}"
+	file=/tmp/${url##*/}
 
 	# Setup zram.
 	curl -so "$file" "$url"
 	bash "$file"
 
+	# systemd(1) services directory.
+	systemd_dir=/etc/systemd/system
+
 	# Fix sulogin(8).
-	mkdir /etc/systemd/system/{emergency,rescue}.service.d
+	mkdir "$systemd_dir"/{emergency,rescue}.service.d
 	read -d '' <<-EOF
 		[Service]
 		Environment=SYSTEMD_SULOGIN_FORCE=1
 	EOF
 
-	printf '%s' "$REPLY" > /etc/systemd/system/emergency.service.d/sulogin.conf
-	printf '%s' "$REPLY" > /etc/systemd/system/rescue.service.d/sulogin.conf
+	printf '%s' "$REPLY" > "$systemd_dir"/emergency.service.d/sulogin.conf
+	printf '%s' "$REPLY" > "$systemd_dir"/rescue.service.d/sulogin.conf
 
 	# Allow systemd-logind(8) to see /proc.
-	mkdir /etc/systemd/system/systemd-logind.service.d
+	dir="$systemd_dir"/systemd-logind.service.d
+	mkdir "$dir"
 	read -d '' <<-EOF
 		[Service]
 		SupplementaryGroups=proc
 	EOF
 
-	printf '%s' "$REPLY" > /etc/systemd/system/systemd-logind.service.d/hidepid.conf
+	printf '%s' "$REPLY" > "$dir"/hidepid.conf
+	unset -v systemd_dir dir
 
 	# Limit /run/user/$UID size to 1 GiB.
-	sed -i 's/#RuntimeDirectorySize=10%/RuntimeDirectorySize=1G/' /etc/systemd/logind.conf
+	sed -i '/RuntimeDirectorySize/{s/#//; s/10%/1G/}' /etc/systemd/logind.conf
 
 	# Setup tmpfiles.
 	read -d '' <<-EOF
@@ -718,24 +735,16 @@ else
 	args='/TLP_DEFAULT_MODE=AC/s/#//'
 
 	# Load 'powersave' CPU governor module.
-	echo cpufreq_powersave > /etc/modules-load.d/cpufreq.conf
+	echo 'cpufreq_powersave' > /etc/modules-load.d/cpufreq.conf
 
 	# Make tlp(1) manage CPU governor.
-	args+='; /CPU_SCALING_GOVERNOR/s/#//'
-
-	# Change CPU governor.
-	driver=$(< /sys/devices/system/cpu/cpu0/cpufreq/scaling_driver)
-	if [[ $driver == acpi-cpufreq ]]; then
-		args+='; /CPU_SCALING_GOVERNOR_ON_AC/s/powersave/schedutil/'
-	fi
-	unset -v driver
+	args+='; /SCALING_GOVERNOR/{s/#//; /AC/s/powersave/schedutil/}'
 
 	# CPU boost.
 	args+='; /CPU_BOOST/s/#//'
 
 	# Powersave stuff.
-	args+='; /SCHED_POWERSAVE/s/#//'
-	args+='; /SCHED_POWERSAVE_ON_AC/s/0/1/'
+	args+='; /SCHED_POWERSAVE/{s/#//; s/0/1/}'
 
 	# Get disk-id.
 	while IFS=': ' read _ disk_id; do
@@ -748,26 +757,21 @@ else
 	done <<< "$(tlp diskid)"
 
 	# Disk management.
-	args+="; s/#DISK_DEVICES=.*/DISK_DEVICES=\"${disk_arr[*]}\"/"
+	args+="; /DISK_DEVICES/{s/#//; s/=.*/=\"${disk_arr[*]}\"/}"
 	unset disk_id disk_arr
 
 	# Runtime power management.
-	args+='; /#AHCI_RUNTIME_PM_ON/s/#//'
-	args+='; /AHCI_RUNTIME_PM_ON_AC/s/on/auto/'
+	args+='; /RUNTIME_PM_ON/{s/#//; s/on/auto/}'
 
 	# Disable disk suspend.
-	args+='; s/#AHCI_RUNTIME_PM_TIMEOUT=15/AHCI_RUNTIME_PM_TIMEOUT=0/'
-
-	# Runtime power management for PCIe.
-	args+='; /#RUNTIME_PM_ON/s/#//'
-	args+='; /RUNTIME_PM_ON_AC/s/on/auto/'
+	args+='; /AHCI_RUNTIME_PM_TIMEOUT/{s/#//; s/15/0/}'
 
 	# Disable USB auto-suspend.
-	args+='; s/#USB_AUTOSUSPEND=1/USB_AUTOSUSPEND=0/'
+	args+='; /USB_AUTOSUSPEND/{s/#//; s/1/0/}'
 
 	# Configure tlp(1).
 	sed -i "$args" /etc/tlp.conf
-	unset -v disk args
+	unset -v args
 
 	# Symlink bash(1) to rbash(1).
 	ln -sT bash /usr/bin/rbash
@@ -812,7 +816,7 @@ else
 	systemctl enable macspoof@"$if_name"
 	unset -v nr if_name
 
-	# Symlink /usr/local/bin to /usr/local/sbin.
+	# Symlink /usr/local/sbin to /usr/local/bin.
 	rmdir /usr/local/sbin
 	ln -s bin /usr/local/sbin
 
@@ -846,7 +850,7 @@ else
 
 	# Disable core dump.
 	echo '* hard core 0' >> /etc/security/limits.conf
-	sed -i 's/#Storage=external/Storage=none/' /etc/systemd/coredump.conf
+	sed -i '/Storage/{s/#//; s/external/none/}' /etc/systemd/coredump.conf
 
 	# Disallow root to login to TTY.
 	read -d '' <<-EOF
@@ -879,7 +883,6 @@ else
 
 	if [[ $key_file == false ]]; then
 		dir=/etc/systemd/system/getty@tty1.service.d
-		file=$dir/autologin.conf
 
 		# Auto login
 		mkdir "$dir"
@@ -890,8 +893,8 @@ else
 			ExecStart=-/sbin/agetty -a $username -i -J -n -N %I \$TERM
 		EOF
 
-		printf '%s' "$REPLY" > "$file"
-		unset -v dir file
+		printf '%s' "$REPLY" > "$dir"/autologin.conf
+		unset -v dir
 	fi
 
 	# Set a password.
