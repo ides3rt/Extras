@@ -6,8 +6,8 @@ trap 'echo Interrupt signal received; exit' SIGINT
 git_url=https://github.com/ides3rt
 raw_url=https://raw.githubusercontent.com/ides3rt
 
-# Use keyfile or not. Mind you that /boot is unencrypted.
-# If keyfile is disable, then auto-login will be enable.
+# Use keyfile or not. Remind you that /boot is unencrypted.
+# If keyfile is disabled, then auto-login will be enabled.
 use_keyfile=false
 
 use_grammak=true
@@ -26,6 +26,8 @@ while read; do
 	fi
 done < /proc/cpuinfo
 proc=$(( `nproc` + 1 ))
+
+eprintf() { printf "$@" 1>&2; }
 
 curl -s "$raw_url"/setup/master/src/etc/makepkg.conf | \
 	sed -E "/MAKEFLAGS=/s/[[:digit:]]+/$proc/g" > /etc/makepkg.conf
@@ -67,7 +69,7 @@ if (( root_id == init_id )); then
 		fi
 
 		while :; do
-			cryptsetup -v "${format_opt[@]}" luksFormat "$disk$p"2 && break
+			cryptsetup "${format_opt[@]}" luksFormat "$disk$p"2 && break
 		done
 		unset use_keyfile format_opt
 
@@ -83,10 +85,10 @@ if (( root_id == init_id )); then
 			esp_flags=,discard
 		fi
 
-		cryptsetup -v "${crypt_flags[@]}" open "$disk$p"2 "$crypt_nm" || exit 1
+		cryptsetup "${crypt_flags[@]}" open "$disk$p"2 "$crypt_name" || exit 1
 		unset crypt_flags
 
-		mapper=/dev/mapper/"$crypt_nm"
+		mapper=/dev/mapper/"$crypt_name"
 		mkfs.btrfs -f -L Arch "$mapper"
 
 		mount "$mapper" /mnt
@@ -122,7 +124,8 @@ if (( root_id == init_id )); then
 		chattr +C /mnt/{boot,efi,var}
 		chmod 700 /mnt/{boot,efi,root}
 
-		mount -o nosuid,nodev,noexec,noatime,fmask=0177,dmask=0077"$esp_flags" "$disk$p"1 /mnt/efi
+		mount -o nosuid,nodev,noexec,noatime,fmask=0177,dmask=0077"$esp_flags" \
+			"$disk$p"1 /mnt/efi
 		mount -o nodev,noatime,subvol=@/boot "$mapper" /mnt/boot
 		mount -o nodev,noatime,subvol=@/home "$mapper" /mnt/home
 		mount -o nodev,noatime,subvol=@/opt "$mapper" /mnt/opt
@@ -142,11 +145,12 @@ if (( root_id == init_id )); then
 		break
 	done
 
-	# Create dummies , so systemd(1) doesn't make random subvol.
+	# Create dummies, so systemd(1) doesn't make random subvol.
 	mkdir -p /mnt/var/lib/{machines,portables}
 	chmod 700 /mnt/var/lib/{machines,portables}
 
-	# Allow /usr/bin/sh installation for once.
+	# Allow /usr/bin/sh installation for once,
+	# else A LOT of pacman's hooks won't work.
 	sed -i 's,usr/bin/sh,,' /etc/pacman.conf
 
 	pacstrap /mnt base linux-hardened linux-hardened-headers \
@@ -161,7 +165,7 @@ if (( root_id == init_id )); then
 	unset -v cpu args
 
 	# genfstab(8) doesn't handle bind-mount properly,
-	# so we need to handle ourself.
+	# so we need to handle [bind-mount] ourself.
 	echo '/state/var/lib/pacman /var/lib/pacman none bind 0 0' >> /mnt/etc/fstab
 
 	read -d '' <<-EOF
@@ -177,7 +181,6 @@ if (( root_id == init_id )); then
 		proc /proc procfs nosuid,nodev,noexec,gid=proc,hidepid=2 0 0
 
 	EOF
-
 	printf '%s' "$REPLY" >> /mnt/etc/fstab
 
 	mount -t tmpfs -o nosuid,nodev,noatime,size=6G,mode=1777 tmpfs /mnt/opt
@@ -202,14 +205,13 @@ if (( root_id == init_id )); then
 
 	umount -R /mnt
 	cryptsetup close "$crypt_nm"
-
 else
 	unset -v root_id init_id
 
 	while :; do
-		read -p 'Your timezone: ' Timezone
+		read -p 'Your timezone: ' timezone
 		[[ -f /usr/share/zoneinfo/$timezone ]] && break
-		printf '%s\n' "Err: $timezone: not found..." 1>&2
+		eprintf '%s\n' "Err: $timezone: not found..."
 	done
 
 	ln -sf /usr/share/zoneinfo/"$timezone" /etc/localtime
@@ -305,114 +307,52 @@ else
 		macchanger
 	pacman -S --noconfirm --asdeps llvm
 
-	root_id=$(lsblk -dno UUID "$disk$p"2)
-	mapper_id=$(findmnt -no UUID /)
+	root_uuid=$(lsblk -dno UUID "$disk$p"2)
+	mapper_uuid=$(findmnt -no UUID /)
 
-	echo "$crypt_nm UUID=$root_id none password-echo=no" > /etc/crypttab.initramfs
+	echo "$crypt_name UUID=$root_uuid none password-echo=no" > /etc/crypttab.initramfs
 	chmod 600 /etc/crypttab.initramfs
 
-	# Specify the rootfs.
-	kernel="root=UUID=$mapper_id ro"
+	kernel_cmdline="root=UUID=$mapper_uuid ro"
 
-	# Specify the initrd files.
-	#
-	# Must be commented out if mkinitcpio(8) is in used.
-	#kernel+=" initrd=\\$cpu-ucode.img initrd=\\initramfs-linux-hardened.img"
+	# We already use Unified Kernel Image, which
+	# required ALL 'initrd' command to be GONE.
+	#kernel_cmdline+=" initrd=\\$cpu-ucode.img initrd=\\initramfs-linux-hardened.img"
 
-	# Don't show kernel messages.
-	kernel+=' quiet loglevel=0 rd.udev.log_level=0 rd.systemd.show_status=false'
+	# All thanks to Whonix developers for this.
+	# https://github.com/Whonix/security-misc/tree/master/etc/default/grub.d
+	kernel_cmdline+=' quiet loglevel=0 rd.udev.log_level=0 rd.systemd.show_status=false'
+	kernel_cmdline+=' lsm=landlock,lockdown,yama,apparmor,bpf'
+	kernel_cmdline+=' spectre_v2=on spec_store_bypass_disable=on'
+	kernel_cmdline+=' tsx=off tsx_async_abort=full,nosmt mds=full,nosmt'
+	kernel_cmdline+=' l1tf=full,force nosmt=force kvm.nx_huge_pages=force'
+	kernel_cmdline+=' random.trust_cpu=off intel_iommu=on amd_iommu=on'
+	kernel_cmdline+=' slab_nomerge slub_debug=FZ init_on_alloc=1 init_on_free=1'
+	kernel_cmdline+=' mce=0 vsyscall=none extra_latent_entropy debugfs=off'
 
-	# Enable Apparmor.
-	kernel+=' lsm=landlock,lockdown,yama,apparmor,bpf'
+	# This command cause my system to fails,
+	# however, it gets recommended by Whonix developers.
+	#kernel_cmdline+=' efi=disable_early_pci_dma'
 
-	# Enable all mitigations for Spectre 2.
-	kernel+=' spectre_v2=on'
-
-	# Disable Speculative Store Bypass.
-	kernel+=' spec_store_bypass_disable=on'
-
-	# Disable TSX, enable all mitigations for the TSX Async Abort
-	# vulnerability and disable SMT.
-	kernel+=' tsx=off tsx_async_abort=full,nosmt'
-
-	# Enable all mitigations for the MDS vulnerability and disable SMT.
-	kernel+=' mds=full,nosmt'
-
-	# Enable all mitigations for the L1TF vulnerability and disable SMT
-	# and L1D flush runtime control.
-	kernel+=' l1tf=full,force'
-
-	# Force disable SMT.
-	kernel+=' nosmt=force'
-
-	# Mark all huge pages in the EPT as non-executable to mitigate iTLB multihit.
-	kernel+=' kvm.nx_huge_pages=force'
-
-	# Distrust the CPU for initial entropy at boot as it is not possible to
-	# audit, may contain weaknesses or a backdoor.
-	kernel+=' random.trust_cpu=off'
-
-	# Enable IOMMU to prevent DMA attacks.
-	kernel+=' intel_iommu=on amd_iommu=on'
-
-	# Disable the busmaster bit on all PCI bridges during very
-	# early boot to avoid holes in IOMMU.
-	#
-	# Keep in mind that this cmd cause my system to fails.
-	# However, it gets recommended by Whonix developers.
-	#kernel+=' efi=disable_early_pci_dma'
-
-	# Disable the merging of slabs of similar sizes.
-	kernel+=' slab_nomerge'
-
-	# Enable sanity checks (F) and redzoning (Z).
-	kernel+=' slub_debug=FZ'
-
-	# Zero memory at allocation and free time.
-	kernel+=' init_on_alloc=1 init_on_free=1'
-
-	# Makes the kernel panic on uncorrectable errors
-	# in ECC memory that an attacker could exploit.
-	kernel+=' mce=0'
-
-	# Enable Kernel Page Table Isolation.
-	#
-	# This cmd is already get enforce by linux-hardended kernel.
-	#kernel+=' pti=on'
-
-	# Vsyscalls are obsolete, are at fixed addresses and are a target for ROP.
-	kernel+=' vsyscall=none'
-
-	# Enable page allocator freelist randomization.
-	#
-	# This cmd is already get enforce by linux-hardended kernel.
-	#kernel+=' page_alloc.shuffle=1'
-
-	# Gather more entropy during boot.
-	kernel+=' extra_latent_entropy'
-
-	# Restrict access to debugfs.
-	kernel+=' debugfs=off'
+	# These command already got enforce by linux-hardended kernel,
+	# and thus this is commented out.
+	#kernel_cmdline+=' pti=on page_alloc.shuffle=1'
 
 	# Disable annoying OEM logo.
-	kernel+=' bgrt_disable'
+	kernel_cmdline+=' bgrt_disable'
 
-	# Disable SSS as it meant for server usage.
-	kernel+=' libahci.ignore_sss=1'
+	# These are meant for server usage, hence why we disable.
+	kernel_cmdline+=' libahci.ignore_sss=1'
+	kernel_cmdline+=' modprobe.blacklist=iTCO_wdt nowatchdog'
 
-	# Disable Watchdog as it meant for server usage.
-	kernel+=' modprobe.blacklist=iTCO_wdt nowatchdog'
-
-	# Remove console cursor blinking.
-	#
-	# Also, I don't recommended this if you're using disk encryption
-	# on rootfs, unless you've a keyfile.
-	[[ $key_file == true ]] && kernel+=' vt.global_cursor_default=0'
+	if [[ $use_keyfile == true ]]; then
+		kernel_cmdline+=' vt.global_cursor_default=0'
+	fi
 
 	# Disable zswap as we already enabled zram.
-	kernel+=' zswap.enabled=0'
+	kernel_cmdline+=' zswap.enabled=0'
 
-	echo "$kernel" > /etc/kernel/cmdline
+	echo "$kernel_cmdline" > /etc/kernel/cmdline
 	efibootmgr --disk "$disk" --part 1 --create \
 		--label 'Arch Linux' \
 		--loader '\EFI\ARCHX64\linux-hardended.efi'
@@ -428,10 +368,8 @@ else
 		cryptsetup -v -h sha256 -S 0 -i 1000 luksAddKey \
 			"$disk$p"2 /etc/cryptsetup-keys.d/"$crypt_name".key
 	fi
+	unset -v cpu crypt_name disk p modules root_uuid mapper_uuid kernel_cmdline
 
-	unset -v cpu crypt_name disk p modules root_id mapper_id kernel
-
-	# Detect a GPU driver.
 	while read; do
 		if [[ $REPLY == *VGA* ]]; then
 			case $REPLY in
@@ -493,23 +431,25 @@ else
 				pacman -S --noconfirm --asdeps pipewire-jack \
 					wireplumber noto-fonts
 
-				pacman -S --noconfirm "$gpu" git wget rsync virt-manager htop \
+				pacman -S --noconfirm "$gpu" git wget rsync virt-manager \
 					fzf tmux zip unzip pigz p7zip pbzip2 rustup sccache \
 					arch-audit arch-wiki-lite archiso udisks2 exfatprogs \
 					flatpak terminus-font pwgen xorg-server xorg-xrandr \
-					xorg-xinit xdg-user-dirs arc-solid-gtk-theme \
+					xorg-xinit xdg-user-dirs arc-solid-gtk-theme htop \
 					papirus-icon-theme redshift bspwm sxhkd xorg-xsetroot \
 					rxvt-unicode rofi pipewire dunst picom feh sxiv maim \
 					xdotool perl-image-exiftool firefox-developer-edition \
-					links libreoffice pinta zathura mpv neofetch cowsay \
+					links libreoffice-fresh zathura mpv neofetch cowsay \
 					cmatrix figlet sl fortune-mod lolcat doge
 
-				# Don't use --noconfirm as there're confilt packages and
-				# pacman(8) by default will answer 'no', instead of 'yes'.
-				yes | pacman -S --asdeps qemu ebtables dnsmasq edk2-ovmf \
-					lsof strace dialog bash-completion memcached libnotify \
-					pipewire-pulse realtime-privileges rtkit yt-dlp aria2 \
-					xclip zathura-pdf-mupdf noto-fonts-emoji
+				# Pre-remove conflict package (iptables), else
+				# 'iptables-nft' won't be installed.
+				pacman -Rdd --noconfirm iptables
+
+				pacman -S --noconfirm --asdeps qemu iptables-nft dnsmasq \
+					edk2-ovmf lsof strace dialog bash-completion memcached \
+					libnotify pipewire-pulse realtime-privileges rtkit \
+					yt-dlp aria2 xclip zathura-pdf-mupdf noto-fonts-emoji
 
 				systemctl enable libvirtd.socket
 				systemctl --global enable pipewire-pulse
@@ -538,7 +478,7 @@ else
 				break ;;
 
 			*)
-				printf '%s\n' "Err: $REPLY: invaild reply..." ;;
+				eprintf '%s\n' "Err: $REPLY: invaild reply..." ;;
 		esac
 	done
 	unset -v gpu
@@ -668,7 +608,6 @@ else
 	sed -i '/log_group/s/root/audit/' /etc/audit/auditd.conf
 	sed -i '/write-cache/s/#//' /etc/apparmor/parser.conf
 
-	# Use the common Machine ID.
 	url=https://raw.githubusercontent.com/Whonix/dist-base-files/master/etc/machine-id
 	curl -s "$url" > /etc/machine-id
 	unset -v url
@@ -691,6 +630,7 @@ else
 	groups=audit,doas,users,lp,wheel
 
 	# Groups that required if systemd-udevd(7) doesn't exist.
+	# This is for mature check and unneeded.
 	if [[ ! -f /lib/systemd/systemd-udevd ]]; then
 		groups+=,scanner,video,kvm,input,audio
 	fi
@@ -703,10 +643,11 @@ else
 		useradd -mG "$groups" "$username" && break
 	done
 
+	# We don't want user to type password for 2 times,
+	# hence we enabled auto-login when keyfile is disabled.
 	if [[ $use_keyfile == false ]]; then
 		dir=/etc/systemd/system/getty@tty1.service.d
 
-		# Auto login
 		mkdir "$dir"
 		read -d '' <<-EOF
 			[Service]
@@ -725,7 +666,6 @@ else
 	unset -v groups username
 
 	vcon=/etc/vconsole.conf
-
 	if [[ $use_grammak == true ]]; then
 		url=$git_url/grammak
 		dir=/tmp/${url##*/}
