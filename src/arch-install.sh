@@ -105,12 +105,12 @@ if (( root_id == init_id )); then
 		chmod 700 /mnt/@/root
 
 		btrfs su cr /mnt/@/srv
-
-		mkdir /mnt/@/usr
-		btrfs su cr /mnt/@/usr/local
+		btrfs su cr /mnt/@/usr_local
 
 		btrfs su cr /mnt/@/var
-		chattr +C /mnt/@/var
+		btrfs su cr /mnt/@/var_tmp
+		chattr +C /mnt/@/var{,_tmp}
+		chmod 1777 /mnt/@/var_tmp
 
 		btrfs su cr /mnt/@/.snapshots
 		mkdir /mnt/@/.snapshots/0
@@ -120,26 +120,28 @@ if (( root_id == init_id )); then
 		umount /mnt
 		mount -o nodev,noatime,compress-force=zstd:1,space_cache=v2 "$mapper" /mnt
 
-		mkdir -p /mnt/{.snapshots,boot,efi,home,opt,root,srv,'usr/local',var}
-		chattr +C /mnt/{boot,efi,var}
+		mkdir -p /mnt/{.snapshots,boot,efi,home,opt,root,srv,'usr/local',var/tmp}
+		chattr +C /mnt/{boot,efi,var,var/tmp}
+		chmod 1777 /mnt/var/tmp
 		chmod 700 /mnt/{boot,efi,root}
 
 		mount -o nosuid,nodev,noexec,noatime,fmask=0177,dmask=0077"$esp_flags" \
 			"$disk$p"1 /mnt/efi
-		mount -o nodev,noatime,subvol=@/boot "$mapper" /mnt/boot
-		mount -o nodev,noatime,subvol=@/home "$mapper" /mnt/home
+		mount -o nosuid,nodev,noexec,noatime,subvol=@/boot "$mapper" /mnt/boot
+		mount -o nosuid,nodev,noatime,subvol=@/home "$mapper" /mnt/home
 		mount -o nodev,noatime,subvol=@/opt "$mapper" /mnt/opt
-		mount -o nodev,noatime,subvol=@/root "$mapper" /mnt/root
-		mount -o nodev,noatime,subvol=@/srv "$mapper" /mnt/srv
-		mount -o nodev,noatime,subvol=@/usr/local "$mapper" /mnt/usr/local
-		mount -o nodev,noatime,subvol=@/var "$mapper" /mnt/var
+		mount -o nosuid,nodev,noatime,subvol=@/root "$mapper" /mnt/root
+		mount -o nosuid,nodev,noexec,noatime,subvol=@/srv "$mapper" /mnt/srv
+		mount -o nodev,noatime,subvol=@/usr_local "$mapper" /mnt/usr/local
+		mount -o nosuid,nodev,noexec,noatime,subvol=@/var "$mapper" /mnt/var
+		mount -o nosuid,nodev,noatime,subvol=@/var_tmp "$mapper" /mnt/var/tmp
 		mount -o nodev,noatime,subvol=@/.snapshots "$mapper" /mnt/.snapshots
 
 		mkdir -p /mnt/state/var
 		chattr +C /mnt/state/var
 
 		mkdir -p /mnt/{,state/}var/lib/pacman
-		mount --bind /mnt/state/var/lib/pacman /mnt/var/lib/pacman
+		mount -Bo nosuid,nodev,noexec /mnt/state/var/lib/pacman /mnt/var/lib/pacman
 
 		unset -v disk p mapper esp_flags
 		break
@@ -158,15 +160,16 @@ if (( root_id == init_id )); then
 
 	chattr +C /mnt/{dev,run,tmp,sys,proc}
 
-	args='/^#/d; s/[[:blank:]]+/ /g; s/rw,//; s/,ssd//; s/,subvolid=[[:digit:]]+//'
-	args+='; s#/@#@#; s#,subvol=@/\.snapshots/0/snapshot##'
+	args='/^#/d; s/[[:blank:]]+/ /g; s/rw,//; s/,ssd//; s#/@#@#'
+	args+='; s/,subvolid=[[:digit:]]+//; s#,subvol=@/\.snapshots/0/snapshot##'
+	args+='; 3,$s/,compress-force=zstd:1,space_cache=v2//'
 	args+='; /\/efi/{s/.$/1/; s/,code.*-ro//}; /\/var\/lib\/pacman/d'
 	genfstab -U /mnt | sed -E "$args" | cat -s > /mnt/etc/fstab
 	unset -v cpu args
 
 	# genfstab(8) doesn't handle bind-mount properly,
 	# so we need to handle [bind-mount] ourself.
-	echo '/state/var/lib/pacman /var/lib/pacman none bind 0 0' >> /mnt/etc/fstab
+	echo '/state/var/lib/pacman /var/lib/pacman none nosuid,nodev,noexec bind 0 0' >> /mnt/etc/fstab
 
 	read -d '' <<-EOF
 
@@ -310,7 +313,8 @@ else
 	root_uuid=$(lsblk -dno UUID "$disk$p"2)
 	mapper_uuid=$(findmnt -no UUID /)
 
-	echo "$crypt_name UUID=$root_uuid none password-echo=no" > /etc/crypttab.initramfs
+	echo "$crypt_name UUID=$root_uuid none password-echo=no,x-initrd.attach" \
+		> /etc/crypttab.initramfs
 	chmod 600 /etc/crypttab.initramfs
 
 	kernel_cmdline="root=UUID=$mapper_uuid ro"
@@ -397,18 +401,15 @@ else
 		if [[ $gpu == *nvidia* ]]; then
 			curl -sO "$dir_url"/50-nvidia.conf
 		fi
-	)
 
-	(
 		dir_url=$base_url/etc/sysctl.d
 		cd "${dir_url#$base_url}"
 
 		curl -sO "$dir_url"/30-security.conf
+		> /etc/ufw/sysctl.conf
 
 		curl -sO "$dir_url"/50-printk.conf
-	) && > /etc/ufw/sysctl.conf
 
-	(
 		dir_url=$base_url/etc/udev/rules.d
 		cd "${dir_url#$base_url}"
 
