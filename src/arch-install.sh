@@ -34,6 +34,7 @@ curl -s "$raw_url"/setup/master/src/etc/makepkg.conf | \
 
 curl -s "$raw_url"/setup/master/src/etc/pacman.conf | \
 	sed -E "/ParallelDownloads/s/[[:digit:]]+/$proc/g" > /etc/pacman.conf
+unset -v proc
 
 read root_id _ <<< "$(ls -di /)"
 read init_id _ <<< "$(ls -di /proc/1/root/.)"
@@ -160,18 +161,24 @@ if (( root_id == init_id )); then
 
 	chattr +C /mnt/{dev,run,tmp,sys,proc}
 
+	# genfstab(8) doesn't handle bind-mount properly,
+	# so we need to handle [bind-mount] ourself.
+	umount /mnt/var/lib/pacman
+
 	args='/^#/d; s/[[:blank:]]+/ /g; s/rw,//; s/,ssd//; s#/@#@#'
 	args+='; s/,subvolid=[[:digit:]]+//; s#,subvol=@/\.snapshots/0/snapshot##'
 	args+='; 3,$s/,compress-force=zstd:1,space_cache=v2//'
-	args+='; /\/efi/{s/.$/1/; s/,code.*-ro//}; /\/var\/lib\/pacman/d'
-	genfstab -U /mnt | sed -E "$args" | cat -s > /mnt/etc/fstab
+	args+='; /\/efi/{s/.$/1/; s/,code.*-ro//}'
+	genfstab -U /mnt | sed -E "$args" > /mnt/etc/fstab
 	unset -v cpu args
 
-	# genfstab(8) doesn't handle bind-mount properly,
-	# so we need to handle [bind-mount] ourself.
-	echo '/state/var/lib/pacman /var/lib/pacman none nosuid,nodev,noexec bind 0 0' >> /mnt/etc/fstab
+	mount -Bo nosuid,nodev,noexec /mnt/state/var /mnt/state/var
+	mount -Bo nosuid,nodev,noexec /mnt/state/var/lib/pacman /mnt/var/lib/pacman
 
 	read -d '' <<-EOF
+		/state/var /state/var none bind,nosuid,nodev,noexec 0 0
+
+		/state/var/lib/pacman /var/lib/pacman none bind,nosuid,nodev,noexec 0 0
 
 		tmpfs /tmp tmpfs nosuid,nodev,noatime,size=6G 0 0
 
@@ -179,7 +186,7 @@ if (( root_id == init_id )); then
 
 		tmpfs /run tmpfs nosuid,nodev,noexec,size=1G 0 0
 
-		devtmpfs /dev devtmpfs nosuid,dev,noexec,size=0k 0 0
+		devtmpfs /dev devtmpfs nosuid,noexec,size=0k 0 0
 
 		proc /proc procfs nosuid,nodev,noexec,gid=proc,hidepid=2 0 0
 
@@ -207,7 +214,7 @@ if (( root_id == init_id )); then
 	rm -f /mnt/etc/resolv.conf
 
 	umount -R /mnt
-	cryptsetup close "$crypt_nm"
+	cryptsetup close "$crypt_name"
 else
 	unset -v root_id init_id
 
@@ -226,16 +233,17 @@ else
 
 	read -p 'Your hostname: ' hostname
 	echo "$hostname" > /etc/hostname
-	unset -v hostname
 
 	read -d '' <<-EOF
 
 		127.0.0.1 localhost
 		::1 localhost
+		127.0.1.1 $hostname
 	EOF
 	printf '%s' "$REPLY" >> /etc/hosts
 
 	systemctl enable systemd-networkd systemd-resolved
+	unset -v hostname
 
 	read -d '' <<-EOF
 		[Match]
