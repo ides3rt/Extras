@@ -224,7 +224,7 @@ else
 		eprintf '%s\n' "Err: $timezone: not found..."
 	done
 
-	ln -sf /usr/share/zoneinfo/"$timezone" /etc/localtime
+	ln -s /usr/share/zoneinfo/"$timezone" /etc/localtime
 	hwclock --systohc
 
 	echo 'en_US.UTF-8 UTF-8' > /etc/locale.gen
@@ -313,10 +313,8 @@ else
 	rm -f /boot/initramfs-linux-hardened-fallback.img
 
 	pacman -S --noconfirm btrfs-progs efibootmgr dosfstools moreutils autoconf \
-		automake bc bison fakeroot flex pkgconf clang lld fcron opendoas ufw \
-		apparmor usbguard man-db man-pages dash dbus-broker jitterentropy tlp \
-		macchanger
-	pacman -S --noconfirm --asdeps llvm
+		automake bc bison fakeroot flex pkgconf fcron opendoas ufw apparmor \
+		usbguard man-db man-pages dash dbus-broker jitterentropy tlp macchanger
 
 	root_uuid=$(lsblk -dno UUID "$disk$p"2)
 	mapper_uuid=$(findmnt -no UUID /)
