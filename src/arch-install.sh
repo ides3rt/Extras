@@ -443,12 +443,12 @@ else
 					fzf tmux zip unzip pigz p7zip pbzip2 rustup sccache \
 					arch-audit arch-wiki-lite archiso udisks2 exfatprogs \
 					flatpak terminus-font pwgen xorg-server xorg-xrandr \
-					xorg-xinit xdg-user-dirs arc-solid-gtk-theme htop \
-					papirus-icon-theme redshift bspwm sxhkd xorg-xsetroot \
-					rxvt-unicode rofi pipewire dunst picom feh sxiv maim \
-					xdotool perl-image-exiftool firefox-developer-edition \
-					links libreoffice-fresh zathura mpv neofetch cowsay \
-					cmatrix figlet sl fortune-mod lolcat doge
+					xorg-xinit xdg-user-dirs gnome-themes-extra htop \
+					redshift bspwm sxhkd xorg-xsetroot rxvt-unicode rofi \
+					pipewire dunst picom feh sxiv maim xdotool doge \
+					perl-image-exiftool firefox-developer-edition links \
+					libreoffice-fresh zathura mpv neofetch cowsay cmatrix \
+					figlet sl fortune-mod lolcat
 
 				# Pre-remove conflict package (iptables), else
 				# 'iptables-nft' won't be installed.
