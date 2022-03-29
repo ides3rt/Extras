@@ -313,8 +313,9 @@ else
 	rm -f /boot/initramfs-linux-hardened-fallback.img
 
 	pacman -S --noconfirm btrfs-progs efibootmgr dosfstools moreutils autoconf \
-		automake bc bison fakeroot flex pkgconf fcron opendoas ufw apparmor \
-		usbguard man-db man-pages dash dbus-broker jitterentropy tlp macchanger
+		automake bc bison fakeroot flex pkgconf fcron opendoas ufw fail2ban \
+		apparmor usbguard man-db man-pages dash dbus-broker jitterentropy tlp \
+		macchanger
 
 	root_uuid=$(lsblk -dno UUID "$disk$p"2)
 	mapper_uuid=$(findmnt -no UUID /)
@@ -541,6 +542,12 @@ else
 
 	usbguard generate-policy > /etc/usbguard/rules.conf
 
+	groupadd -r audit
+	sed -i '/log_group/s/root/audit/' /etc/audit/auditd.conf
+	sed -i '/write-cache/s/#//' /etc/apparmor/parser.conf
+
+	sed -i '/input.*echo-request/s/ACCEPT/DROP/' /etc/ufw/before*.rules
+
 	# Load 'powersave' CPU governor module as Arch Linux unload it by default.
 	echo 'cpufreq_powersave' > /etc/modules-load.d/cpufreq.conf
 
@@ -568,13 +575,16 @@ else
 	sed -i "$args" /etc/tlp.conf
 	unset -v args
 
-	ln -sT bash /usr/bin/rbash
-	ln -sfT dash /usr/bin/sh
-
 	ufw enable
 	systemctl disable dbus
-	systemctl enable apparmor auditd dbus-broker fcron tlp ufw usbguard
+	systemctl enable apparmor auditd dbus-broker fail2ban fcron tlp ufw usbguard
 	systemctl --global enable dbus-broker
+
+	rmdir /usr/local/sbin
+	ln -s bin /usr/local/sbin
+
+	ln -sT bash /usr/bin/rbash
+	ln -sfT dash /usr/bin/sh
 
 	read -d '' <<-EOF
 		[Unit]
@@ -603,17 +613,10 @@ else
 	systemctl enable macspoof@"$if_name"
 	unset -v nr if_name
 
-	rmdir /usr/local/sbin
-	ln -s bin /usr/local/sbin
-
-	groupadd -r doas
-	echo 'permit persist :doas' > /etc/doas.conf
-	chmod 640 /etc/doas.conf
-	chown :doas /etc/doas.conf
-
-	groupadd -r audit
-	sed -i '/log_group/s/root/audit/' /etc/audit/auditd.conf
-	sed -i '/write-cache/s/#//' /etc/apparmor/parser.conf
+	args='/PermitRootLogin/{s/#//; s/prohibit-password/no/}'
+	args+='; /#PasswordAuthentication/{s/#//; s/yes/no/}'
+	sed -i "$args" /etc/ssh/sshd_config
+	unset -v args
 
 	url=https://raw.githubusercontent.com/Whonix/dist-base-files/master/etc/machine-id
 	curl -s "$url" > /etc/machine-id
@@ -626,12 +629,16 @@ else
 	echo '* hard core 0' >> /etc/security/limits.conf
 	sed -i '/Storage/{s/#//; s/external/none/}' /etc/systemd/coredump.conf
 
+	groupadd -r doas
+	echo 'permit persist :doas' > /etc/doas.conf
+	chmod 640 /etc/doas.conf
+	chown :doas /etc/doas.conf
+
 	read -d '' <<-EOF
 		# File which lists terminals from which root can log in.
 		# See securetty(5) for details.
 	EOF
 	printf '%s' "$REPLY" > /etc/securetty
-
 	passwd -l root
 
 	groups=audit,doas,users,lp,wheel
