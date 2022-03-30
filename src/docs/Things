@@ -3,17 +3,17 @@
 # How to create custom service in OpenRC
 https://github.com/OpenRC/openrc/blob/master/service-script-guide.md
 
-# Better way to enable trim (on SystemD)
+# Better way to enable trim (on systemd)
 systemctl enable fstrim.timer
 
-# LS_COLORS (for Gnu)
+# LS_COLORS (for GNU coreutils)
 rs: Reset             no: Normal                  fi: File            di: Dir
 ln: SysLink           pi: Fifo                    so: Socket          bd: BlockDevice
-cd: CharDevice        mi: NonExistSysLink         or: OrphanSysLink   ex: Executable
+cd: CharDevice        mi: NonExistSysLink         or: OrphanSymLink   ex: Executable
 do: Door              su: SUID                    sg: SGID            st: StickyDir
 ow: OtherWritableDir  tw: StickyOtherWritableDir  ca: Cap             mh: MultiHardLink
 
-# Using doas(1) instend of sudo(1) in yay(1)
+# Using doas(1) instend of sudo(8) in yay(1)
 yay --sudo doas --sudoflags -- --save
 
 # Alacritty themes
@@ -28,7 +28,7 @@ https://www.linuxfordevices.com/tutorials/linux/connect-to-github-with-ssh
 # Change Firefox UI
 https://www.dedoimedo.com/computers/firefox-91-disable-proton.html
 
-# Disable non focus windows border
+# Disable non focus windows border on bspwm(1)
 while bspc subscribe -c 1 node_focus; do
     bspc config border_width 0
     bspc config -n focused border_width 1
