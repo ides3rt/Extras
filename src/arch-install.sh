@@ -443,7 +443,7 @@ else
 					fzf tmux zip unzip pigz p7zip pbzip2 rustup sccache \
 					arch-audit arch-wiki-lite archiso udisks2 exfatprogs \
 					flatpak terminus-font pwgen xorg-server xorg-xrandr \
-					xorg-xinit xdg-user-dirs gnome-themes-extra htop \
+					xorg-xinit xdg-user-dirs arc-solid-gtk-theme htop \
 					redshift bspwm sxhkd xorg-xsetroot rxvt-unicode rofi \
 					pipewire dunst picom feh sxiv maim xdotool doge \
 					perl-image-exiftool firefox-developer-edition links \
@@ -457,7 +457,8 @@ else
 				pacman -S --noconfirm --asdeps qemu iptables-nft dnsmasq \
 					edk2-ovmf lsof strace dialog bash-completion memcached \
 					libnotify pipewire-pulse realtime-privileges rtkit \
-					yt-dlp aria2 xclip zathura-pdf-mupdf noto-fonts-emoji
+					yt-dlp aria2 xclip zathura-pdf-mupdf noto-fonts-emoji \
+					arc-icon-theme
 
 				systemctl enable libvirtd.socket
 				systemctl --global enable pipewire-pulse
