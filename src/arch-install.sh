@@ -312,7 +312,7 @@ else
 	mkdir -p /efi/EFI/ARCHX64
 	rm -f /boot/initramfs-linux-hardened-fallback.img
 
-	pacman -S --noconfirm btrfs-progs efibootmgr dosfstools moreutils autoconf \
+	pacman -S --noc btrfs-progs efibootmgr dosfstools moreutils autoconf \
 		automake bc bison fakeroot flex pkgconf fcron opendoas ufw fail2ban \
 		apparmor usbguard man-db man-pages dash dbus-broker jitterentropy tlp \
 		macchanger
@@ -429,32 +429,31 @@ else
 
 	unset -v base_url
 
-	printf '%s\n' "Do you wanna dl opt-pkgs for author's dotfiles (iDes3rt)?"
+	printf '%s\n' "Do you want to install pkgs for author's dotfiles?"
 	while :; do
 		read -p '[y/N]: '
 		case ${REPLY,,} in
 			yes|y)
 				# Pre-install dependencies, so it doesn't prompt
 				# user what to be chosen.
-				pacman -S --noconfirm --asdeps pipewire-jack \
+				pacman -S --noc --asd pipewire-jack \
 					wireplumber noto-fonts
 
-				pacman -S --noconfirm "$gpu" git wget rsync virt-manager \
-					fzf tmux zip unzip pigz p7zip pbzip2 rustup sccache \
-					arch-audit arch-wiki-lite archiso udisks2 exfatprogs \
-					flatpak terminus-font pwgen xorg-server xorg-xrandr \
-					xorg-xinit xdg-user-dirs arc-solid-gtk-theme htop \
-					redshift bspwm sxhkd xorg-xsetroot rxvt-unicode rofi \
-					pipewire dunst picom feh sxiv maim xdotool doge \
-					perl-image-exiftool firefox-developer-edition links \
-					libreoffice-fresh zathura mpv neofetch cowsay cmatrix \
-					figlet sl fortune-mod lolcat
+				pacman -S --noc $gpu git rsync virt-manager fzf tmux \
+					zip unzip pigz p7zip pbzip2 rustup sccache arch-audit \
+					arch-wiki-lite archiso udisks2 exfatprogs flatpak \
+					terminus-font pwgen xorg-server xorg-xrandr xorg-xinit \
+					xdg-user-dirs arc-solid-gtk-theme htop redshift bspwm \
+					sxhkd xorg-xsetroot rxvt-unicode rofi pipewire dunst \
+					picom feh sxiv maim xdotool doge perl-image-exiftool \
+					firefox-developer-edition links libreoffice-fresh zathura \
+					mpv neofetch cowsay cmatrix figlet sl fortune-mod lolcat
 
-				# Pre-remove conflict package (iptables), else
-				# 'iptables-nft' won't be installed.
-				pacman -Rdd --noconfirm iptables
+				# Pre-remove conflict package (iptables)
+				# else 'iptables-nft' won't be installed.
+				pacman -Rdd --noc iptables
 
-				pacman -S --noconfirm --asdeps qemu iptables-nft dnsmasq \
+				pacman -S --noc --asd qemu iptables-nft dnsmasq \
 					edk2-ovmf lsof strace dialog bash-completion memcached \
 					libnotify pipewire-pulse realtime-privileges rtkit \
 					yt-dlp aria2 xclip zathura-pdf-mupdf noto-fonts-emoji \
