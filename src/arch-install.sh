@@ -312,10 +312,9 @@ else
 	mkdir -p /efi/EFI/ARCHX64
 	rm -f /boot/initramfs-linux-hardened-fallback.img
 
-	pacman -S --noc btrfs-progs efibootmgr dosfstools moreutils autoconf \
-		automake bc bison fakeroot flex pkgconf fcron opendoas ufw fail2ban \
-		apparmor usbguard man-db man-pages dash dbus-broker jitterentropy tlp \
-		macchanger
+	pacman -S --noc btrfs-progs efibootmgr dosfstools autoconf automake bc \
+		bison fakeroot flex pkgconf fcron opendoas ufw fail2ban apparmor \
+		usbguard man-db man-pages dash dbus-broker jitterentropy tlp macchanger
 
 	root_uuid=$(lsblk -dno UUID "$disk$p"2)
 	mapper_uuid=$(findmnt -no UUID /)
@@ -330,7 +329,6 @@ else
 	# required ALL 'initrd' command to be GONE.
 	#kernel_cmdline+=" initrd=\\$cpu-ucode.img initrd=\\initramfs-linux-hardened.img"
 
-	# All thanks to Whonix developers for this.
 	# https://github.com/Whonix/security-misc/tree/master/etc/default/grub.d
 	kernel_cmdline+=' quiet loglevel=0 rd.udev.log_level=0 rd.systemd.show_status=false'
 	kernel_cmdline+=' lsm=landlock,lockdown,yama,apparmor,bpf'
@@ -436,38 +434,43 @@ else
 			yes|y)
 				# Pre-install dependencies, so it doesn't prompt
 				# user what to be chosen.
-				pacman -S --noc --asd pipewire-jack \
-					wireplumber noto-fonts
+				pacman -S --noc --asd pipewire-jack wireplumber noto-fonts
 
-				pacman -S --noc $gpu git rsync virt-manager fzf tmux \
-					zip unzip pigz p7zip pbzip2 rustup sccache arch-audit \
-					arch-wiki-lite archiso udisks2 exfatprogs flatpak \
-					terminus-font pwgen xorg-server xorg-xrandr xorg-xinit \
-					xdg-user-dirs arc-solid-gtk-theme htop redshift bspwm \
-					sxhkd xorg-xsetroot rxvt-unicode rofi pipewire dunst \
-					picom feh sxiv maim xdotool doge perl-image-exiftool \
-					firefox-developer-edition links libreoffice-fresh zathura \
-					mpv neofetch cowsay cmatrix figlet sl fortune-mod lolcat
+				pacman -S --noc $gpu git tmux zip unzip pigz p7zip pbzip2 \
+					rustup sccache arch-audit archiso udisks2 exfatprogs \
+					terminus-font xorg-server xorg-xrandr xorg-xinit pwgen \
+					arc-solid-gtk-theme htop redshift bspwm sxhkd pipewire \
+					xorg-xsetroot rxvt-unicode rofi dunst picom feh maim \
+					xdotool perl-image-exiftool firefox-developer-edition mpv
 
-				# Pre-remove conflict package (iptables)
-				# else 'iptables-nft' won't be installed.
-				pacman -Rdd --noc iptables
-
-				pacman -S --noc --asd qemu iptables-nft dnsmasq \
-					edk2-ovmf lsof strace dialog bash-completion memcached \
+				pacman -S --noc --asd bash-completion lsof strace \
 					libnotify pipewire-pulse realtime-privileges rtkit \
-					yt-dlp aria2 xclip zathura-pdf-mupdf noto-fonts-emoji \
-					arc-icon-theme
+					yt-dlp aria2 xclip noto-fonts-emoji arc-icon-theme
 
-				systemctl enable libvirtd.socket
+				## I'm not really use these things, however, some people may
+				## need this, so I just put it here.
+				#
+				#pacman -S --noc rsync virt-manager fzf arch-wiki-lite lolcat \
+				#	xdg-user-dirs sxiv doge links libreoffice-fresh zathura \
+				#	neofetch cowsay cmatrix figlet sl fortune-mod flatpak
+				#
+				## Pre-remove conflict package (iptables)
+				## else 'iptables-nft' won't be installed.
+				#pacman -Rdd --noc iptables
+				#
+				#pacman -S --noc --asd qemu iptables-nft dnsmasq edk2-ovmf \
+				##	dialog zathura-pdf-mupdf
+				#
+				#systemctl enable libvirtd.socket
+				#
+				#flatpak remote-add --if-not-exists flathub \
+				#	https://flathub.org/repo/flathub.flatpakrepo
+				#flatpak update
+
 				systemctl --global enable pipewire-pulse
 
 				ln -s run/media /
 				echo 'needs_root_rights = no' > /etc/X11/Xwrapper.config
-
-				flatpak remote-add --if-not-exists flathub \
-					https://flathub.org/repo/flathub.flatpakrepo
-				flatpak update
 
 				dir=/etc/wireplumber/main.lua.d
 				mkdir -p "$dir"
