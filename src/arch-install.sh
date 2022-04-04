@@ -3,15 +3,15 @@
 trap 'echo Interrupt signal received; exit' SIGINT
 
 # Base repository's URL.
-git_url=https://github.com/ides3rt
-raw_url=https://raw.githubusercontent.com/ides3rt
+readonly git_url=https://github.com/ides3rt
+readonly raw_url=https://raw.githubusercontent.com/ides3rt
 
 # Use keyfile or not. Remind you that /boot is unencrypted.
 # If keyfile is disabled, then auto-login will be enabled.
-use_keyfile=false
+readonly use_keyfile=${use_keyfile:-false}
 
-use_grammak=true
-crypt_name=luks0
+readonly use_grammak=${use_grammak:-true}
+readonly crypt_name=${crypt_name:-luks0}
 
 while read; do
 	if [[ $REPLY == *vendor_id* ]]; then
@@ -72,7 +72,7 @@ if (( root_id == init_id )); then
 		while :; do
 			cryptsetup "${format_opt[@]}" luksFormat "$disk$p"2 && break
 		done
-		unset use_keyfile format_opt
+		unset format_opt
 
 		if (( $(< /sys/block/"${disk#/dev/}"/queue/rotational) == 0 )); then
 			crypt_flags=(
