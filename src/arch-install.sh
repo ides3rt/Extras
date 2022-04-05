@@ -2,38 +2,44 @@
 
 trap 'echo Interrupt signal received; exit' SIGINT
 
-# Base repository's URL.
+eprintf() { printf "$@" 1>&2; }
+
+if (( $# )); then
+	eprintf '%s\n' "Err: needn't arguments..."
+	exit 1
+elif ((UID)); then
+	eprintf 'Err: must run with root privileges...\n'
+	exit 1
+fi
+
 readonly git_url=https://github.com/ides3rt
 readonly raw_url=https://raw.githubusercontent.com/ides3rt
 
 # Use keyfile or not. Remind you that /boot is unencrypted.
 # If keyfile is disabled, then auto-login will be enabled.
-readonly use_keyfile=${use_keyfile:-false}
+readonly use_keyfile=false
 
-readonly use_grammak=${use_grammak:-true}
-readonly crypt_name=${crypt_name:-luks0}
+readonly use_grammak=true
+readonly crypt_name=luks0
 
 while read; do
-	if [[ $REPLY == *vendor_id* ]]; then
-		case $REPLY in
-			*AMD*)
-				cpu=amd ;;
-
-			*Intel*)
-				cpu=intel ;;
-		esac
-		break
-	fi
+	[[ $REPLY == *vendor_id* ]] && break
 done < /proc/cpuinfo
+
+case $REPLY in
+	*AMD*)
+		cpu=amd ;;
+
+	*Intel*)
+		cpu=intel ;;
+esac
+
 proc=$(( `nproc` + 1 ))
+curl -s "$raw_url"/setup/master/src/etc/makepkg.conf \
+	| sed -E "/MAKEFLAGS=/s/[[:digit:]]+/$proc/g" > /etc/makepkg.conf
 
-eprintf() { printf "$@" 1>&2; }
-
-curl -s "$raw_url"/setup/master/src/etc/makepkg.conf | \
-	sed -E "/MAKEFLAGS=/s/[[:digit:]]+/$proc/g" > /etc/makepkg.conf
-
-curl -s "$raw_url"/setup/master/src/etc/pacman.conf | \
-	sed -E "/ParallelDownloads/s/[[:digit:]]+/$proc/g" > /etc/pacman.conf
+curl -s "$raw_url"/setup/master/src/etc/pacman.conf \
+	| sed -E "/ParallelDownloads/s/[[:digit:]]+/$proc/g" > /etc/pacman.conf
 unset -v proc
 
 read root_id _ <<< "$(ls -di /)"
@@ -126,8 +132,7 @@ if (( root_id == init_id )); then
 		chmod 1777 /mnt/var/tmp
 		chmod 700 /mnt/{boot,efi,root}
 
-		mount -o nosuid,nodev,noexec,noatime,fmask=0177,dmask=0077"$esp_flags" \
-			"$disk$p"1 /mnt/efi
+		mount -o nosuid,nodev,noexec,noatime,fmask=0177,dmask=0077$esp_flags "$disk$p"1 /mnt/efi
 		mount -o nosuid,nodev,noexec,noatime,subvol=@/boot "$mapper" /mnt/boot
 		mount -o nosuid,nodev,noatime,subvol=@/home "$mapper" /mnt/home
 		mount -o nodev,noatime,subvol=@/opt "$mapper" /mnt/opt
@@ -157,7 +162,7 @@ if (( root_id == init_id )); then
 	sed -i 's,usr/bin/sh,,' /etc/pacman.conf
 
 	pacstrap /mnt base linux-hardened linux-hardened-headers \
-		linux-firmware neovim "$cpu"-ucode
+		linux-firmware neovim $cpu-ucode
 
 	chattr +C /mnt/{dev,run,tmp,sys,proc}
 
@@ -316,6 +321,10 @@ else
 		bison fakeroot flex pkgconf fcron opendoas ufw fail2ban apparmor \
 		usbguard man-db man-pages dash dbus-broker jitterentropy tlp macchanger
 
+	# Pipe yes(1) into pacman(8) is required,
+	# else 'iptables-nft' won't be install.
+	yes | pacman -S --asd iptables-nft
+
 	root_uuid=$(lsblk -dno UUID "$disk$p"2)
 	mapper_uuid=$(findmnt -no UUID /)
 
@@ -379,25 +388,9 @@ else
 	fi
 	unset -v cpu crypt_name disk p modules root_uuid mapper_uuid kernel_cmdline
 
-	while read; do
-		if [[ $REPLY == *VGA* ]]; then
-			case $REPLY in
-				*AMD*)
-					gpu=xf86-video-amdgpu ;;
-
-				*Intel*)
-					gpu=xf86-video-intel ;;
-
-				*NVIDIA*)
-					gpu=nvidia-dkms ;;
-			esac
-			break
-		fi
-	done <<< "$(lspci)"
-
-	base_url=$raw_url/setup/master/src
-
 	(
+		base_url=$raw_url/setup/master/src
+
 		dir_url=$base_url/etc/modprobe.d
 		cd "${dir_url#$base_url}"
 
@@ -425,7 +418,20 @@ else
 		fi
 	)
 
-	unset -v base_url
+	while read; do
+		[[ $REPLY == *VGA* ]] && break
+	done <<< "$(lspci)"
+
+	case $REPLY in
+		*AMD*)
+			gpu=xf86-video-amdgpu ;;
+
+		*Intel*)
+			gpu=xf86-video-intel ;;
+
+		*NVIDIA*)
+			gpu=nvidia-dkms ;;
+	esac
 
 	printf '%s\n' "Do you want to install pkgs for author's dotfiles?"
 	while :; do
@@ -443,46 +449,21 @@ else
 					xorg-xsetroot rxvt-unicode rofi dunst picom feh maim \
 					xdotool perl-image-exiftool firefox-developer-edition mpv
 
-				pacman -S --noc --asd bash-completion lsof strace \
+				pacman -S --noc --asd bash-completion lsof stracei \
 					libnotify pipewire-pulse realtime-privileges rtkit \
 					yt-dlp aria2 xclip noto-fonts-emoji arc-icon-theme
 
 				## I'm not really use these things, however, some people may
-				## need this, so I just put it here.
+				## want this, so I just put it here.
 				#
 				#pacman -S --noc rsync virt-manager fzf arch-wiki-lite lolcat \
 				#	xdg-user-dirs sxiv doge links libreoffice-fresh zathura \
 				#	neofetch cowsay cmatrix figlet sl fortune-mod flatpak
 				#
-				## Pre-remove conflict package (iptables)
-				## else 'iptables-nft' won't be installed.
-				#pacman -Rdd --noc iptables
-				#
-				#pacman -S --noc --asd qemu iptables-nft dnsmasq edk2-ovmf \
-				##	dialog zathura-pdf-mupdf
-				#
-				#systemctl enable libvirtd.socket
-				#
-				#flatpak remote-add --if-not-exists flathub \
-				#	https://flathub.org/repo/flathub.flatpakrepo
-				#flatpak update
+				#pacman -S --noc --asd qemu dnsmasq edk2-ovmf dialog \
+				#	zathura-pdf-mupdf
 
-				systemctl --global enable pipewire-pulse
-
-				ln -s run/media /
-				echo 'needs_root_rights = no' > /etc/X11/Xwrapper.config
-
-				dir=/etc/wireplumber/main.lua.d
-				mkdir -p "$dir"
-				cp /usr/share/wireplumber/main.lua.d/50-alsa-config.lua "$dir"
-				sed -i '/suspend-timeout/{s/--//; s/5/0/}' "$dir"/*
-
-				dir=/usr/share/fontconfig/conf.avail
-				ln -s "$dir"/1{0-sub-pixel-rgb,1-lcdfilter-default}.conf \
-					/etc/fonts/conf.d
-				unset -v dir
-
-				sed -i '/encryption/s/luks1/luks2/' /etc/udisks2/udisks2.conf
+				has_opt_pkg=true
 				break ;;
 
 			no|n|'')
@@ -493,6 +474,28 @@ else
 		esac
 	done
 	unset -v gpu
+
+	if [[ $has_opt_pkg == true ]]; then
+		#flatpak remote-add flathub https://flathub.org/repo/flathub.flatpakrepo
+		#flatpak update
+
+		#systemctl enable libvirtd.socket
+		systemctl --global enable pipewire-pulse
+
+		ln -s run/media /
+		echo 'needs_root_rights = no' > /etc/X11/Xwrapper.config
+
+		dir=/etc/wireplumber/main.lua.d
+		mkdir -p "$dir"
+		cp /usr/share/wireplumber/main.lua.d/50-alsa-config.lua "$dir"
+		sed -i '/suspend-timeout/{s/--//; s/5/0/}' "$dir"/*
+
+		dir=/usr/share/fontconfig/conf.avail
+		ln -s "$dir"/1{0-sub-pixel-rgb,1-lcdfilter-default}.conf /etc/fonts/conf.d
+
+		sed -i '/encryption/s/luks1/luks2/' /etc/udisks2/udisks2.conf
+		unset -v has_opt_pkg dir
+	fi
 
 	url=$raw_url/extras/master/src/zram-setup.sh
 	file=/tmp/${url##*/}
